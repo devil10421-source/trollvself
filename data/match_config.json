@@ -1,0 +1,36 @@
+{
+  "_note": "對局設定。標「placeholder」的是規格留待下一份文件決定的占位值，只為讓原型能玩。",
+  "tick_rate": 10,
+  "match_time_limit_sec": 1500,
+  "portal_unlock_time_sec": 720,
+  "start_gold": 250,
+  "start_wood": 80,
+  "map": "res://data/maps/proto_map.txt",
+
+  "construction": {
+    "builder_range_cells": 2,
+    "start_hp_percent": 10,
+    "cancel_refund_percent": 50,
+    "demolish_refund_percent": 0,
+    "keep_hp_ratio_on_upgrade": true
+  },
+
+  "repair": {
+    "hp_per_sec": 40,
+    "cost_ratio_percent": 70,
+    "range_cells": 2
+  },
+
+  "portal": {
+    "build_range_cells": 3,
+    "bonus_per_extra_builder_percent": 15,
+    "max_bonus_percent": 30
+  },
+
+  "building_default_vision": 4,
+
+  "elf":    { "hp": 120, "move_speed": 4.0, "vision": 6 },
+  "soul":   { "move_speed": 4.5, "vision": 6, "energy_max": 100, "energy_regen_per_sec": 2, "repair_energy_per_sec": 5, "repair_hp_per_sec": 40, "_placeholder": true },
+  "troll":  { "hp": 3000, "damage": 45, "attack_interval": 1.0, "attack_range": 1.5, "move_speed": 3.2, "vision": 8, "spawn_delay_sec": 90, "respawn_sec": 20, "reward_gold_per_effective_hp": 0.1, "_placeholder": true },
+  "minion": { "hp": 1000, "damage": 20, "attack_interval": 1.2, "attack_range": 1.5, "move_speed": 2.8, "vision": 6, "respawn_sec": 20, "reward_gold_per_effective_hp": 0.05, "_placeholder": true }
+}

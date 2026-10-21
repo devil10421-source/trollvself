@@ -1,0 +1,126 @@
+{
+  "spec_version": "0.6",
+  "_note": "首輪原型數值，未平衡。成本為「從前一級到下一級的追加成本」。時間單位秒、射程/半徑單位格。",
+  "buildings": [
+    {
+      "id": "elf_house",
+      "name": "精靈樹屋",
+      "category": "economy",
+      "footprint": [2, 2],
+      "max_per_player": 1,
+      "color": "#d9a441",
+      "levels": [
+        { "level": 1, "name": "帳篷",     "cost": { "G": 100,  "W": 0   }, "time": 7,  "hp": 500,  "gold_per_sec": 2,  "requires": [] },
+        { "level": 2, "name": "樹屋",     "cost": { "G": 180,  "W": 30  }, "time": 15, "hp": 850,  "gold_per_sec": 4,  "requires": [] },
+        { "level": 3, "name": "林中宅邸", "cost": { "G": 500,  "W": 100 }, "time": 30, "hp": 1300, "gold_per_sec": 7,  "requires": [ { "building": "craft_hall", "level": 1 } ] },
+        { "level": 4, "name": "古樹居所", "cost": { "G": 1200, "W": 230 }, "time": 50, "hp": 1800, "gold_per_sec": 11, "requires": [ { "building": "craft_hall", "level": 2 } ] }
+      ]
+    },
+    {
+      "id": "lumber_grove",
+      "name": "月露林場",
+      "category": "economy",
+      "footprint": [2, 2],
+      "max_per_player": 1,
+      "color": "#5fa35a",
+      "levels": [
+        { "level": 1, "name": "林場 Lv1", "cost": { "G": 80,  "W": 20  }, "time": 10, "hp": 450,  "wood_per_sec": 1, "requires": [] },
+        { "level": 2, "name": "林場 Lv2", "cost": { "G": 250, "W": 80  }, "time": 25, "hp": 800,  "wood_per_sec": 2, "requires": [ { "building": "elf_house", "level": 2 } ] },
+        { "level": 3, "name": "林場 Lv3", "cost": { "G": 700, "W": 200 }, "time": 40, "hp": 1300, "wood_per_sec": 4, "requires": [ { "building": "craft_hall", "level": 2 } ] }
+      ]
+    },
+    {
+      "id": "craft_hall",
+      "name": "工匠大廳",
+      "category": "tech",
+      "footprint": [2, 2],
+      "max_per_player": 1,
+      "color": "#8a6fc4",
+      "levels": [
+        { "level": 1, "name": "大廳 Lv1", "cost": { "G": 160,  "W": 40  }, "time": 20, "hp": 750,  "requires": [ { "building": "elf_house", "level": 2 } ] },
+        { "level": 2, "name": "大廳 Lv2", "cost": { "G": 650,  "W": 200 }, "time": 45, "hp": 1200, "requires": [ { "building": "elf_house", "level": 3 } ] },
+        { "level": 3, "name": "大廳 Lv3", "cost": { "G": 1600, "W": 400 }, "time": 65, "hp": 1800, "requires": [ { "building": "elf_house", "level": 4 } ] }
+      ]
+    },
+    {
+      "id": "wall",
+      "name": "城牆",
+      "category": "defense",
+      "footprint": [1, 1],
+      "max_per_player": 18,
+      "color": "#9a9a9a",
+      "levels": [
+        { "level": 1, "name": "木柵",     "cost": { "G": 40,  "W": 15  }, "time": 5,  "hp": 650,  "requires": [] },
+        { "level": 2, "name": "石壁",     "cost": { "G": 140, "W": 45  }, "time": 10, "hp": 1600, "requires": [ { "building": "craft_hall", "level": 1 } ] },
+        { "level": 3, "name": "強化壁壘", "cost": { "G": 430, "W": 130 }, "time": 20, "hp": 3600, "requires": [ { "building": "craft_hall", "level": 2 } ] },
+        { "level": 4, "name": "魔法城牆", "cost": { "G": 950, "W": 300 }, "time": 35, "hp": 7000, "requires": [ { "building": "craft_hall", "level": 3 } ] }
+      ]
+    },
+    {
+      "id": "arrow_tower",
+      "name": "箭塔",
+      "category": "defense",
+      "footprint": [1, 1],
+      "max_per_player": 6,
+      "color": "#c45a3c",
+      "levels": [
+        { "level": 1, "name": "箭塔 Lv1", "cost": { "G": 180,  "W": 60  }, "time": 15, "hp": 600,  "attack": { "damage": 15, "interval": 1.5, "range": 5 }, "requires": [ { "building": "craft_hall", "level": 1 } ] },
+        { "level": 2, "name": "箭塔 Lv2", "cost": { "G": 480,  "W": 130 }, "time": 30, "hp": 950,  "attack": { "damage": 36, "interval": 1.5, "range": 6 }, "requires": [ { "building": "craft_hall", "level": 2 } ] },
+        { "level": 3, "name": "箭塔 Lv3", "cost": { "G": 1150, "W": 300 }, "time": 45, "hp": 1500, "attack": { "damage": 75, "interval": 1.5, "range": 7 }, "requires": [ { "building": "craft_hall", "level": 3 } ] }
+      ]
+    },
+    {
+      "id": "frost_tower",
+      "name": "冰霜塔",
+      "category": "control",
+      "footprint": [1, 1],
+      "max_per_player": 2,
+      "color": "#5ab8d9",
+      "levels": [
+        { "level": 1, "name": "冰霜塔 Lv1", "cost": { "G": 400, "W": 120 }, "time": 25, "hp": 650,  "slow": { "percent": 15, "duration": 2, "interval": 4, "range": 5 }, "requires": [ { "building": "craft_hall", "level": 2 } ] },
+        { "level": 2, "name": "冰霜塔 Lv2", "cost": { "G": 900, "W": 260 }, "time": 40, "hp": 1000, "slow": { "percent": 25, "duration": 2, "interval": 4, "range": 6 }, "requires": [ { "building": "craft_hall", "level": 3 } ] }
+      ]
+    },
+    {
+      "id": "watch_tower",
+      "name": "瞭望塔",
+      "category": "scout",
+      "footprint": [1, 1],
+      "max_per_player": 1,
+      "color": "#d9d35a",
+      "levels": [
+        { "level": 1, "name": "瞭望塔", "cost": { "G": 160, "W": 60 }, "time": 15, "hp": 550, "vision": 8, "requires": [ { "building": "craft_hall", "level": 1 } ] }
+      ]
+    },
+    {
+      "id": "repair_post",
+      "name": "修繕站",
+      "category": "support",
+      "footprint": [1, 1],
+      "max_per_player": 1,
+      "color": "#e08ac0",
+      "levels": [
+        { "level": 1, "name": "修繕站", "cost": { "G": 220, "W": 90 }, "time": 20, "hp": 700, "repair_aura": { "radius": 5, "speed_bonus_percent": 25 }, "requires": [ { "building": "craft_hall", "level": 1 } ] }
+      ]
+    },
+    {
+      "id": "escape_portal",
+      "name": "星界傳送門",
+      "category": "victory",
+      "footprint": [3, 3],
+      "max_per_team": 1,
+      "targetable_by_enemies": false,
+      "damageable": false,
+      "color": "#7fe0ff",
+      "requires": [
+        { "building": "craft_hall", "level": 2 },
+        { "building": "elf_house", "level": 4 }
+      ],
+      "stages": [
+        { "stage": 1, "name": "刻畫星界座標", "cost": { "G": 1400, "W": 280 }, "time": 45, "reveal": "none" },
+        { "stage": 2, "name": "安裝傳送核心", "cost": { "G": 2200, "W": 420 }, "time": 65, "reveal": "alert_trolls" },
+        { "stage": 3, "name": "穩定傳送通道", "cost": { "G": 2900, "W": 600 }, "time": 80, "reveal": "minimap_all" }
+      ]
+    }
+  ]
+}
