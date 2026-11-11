@@ -24,6 +24,9 @@ var visibility: VisibilityService
 var escape: EscapeService
 var match_svc: MatchService
 var unit_svc: UnitService
+var house: HouseService
+var troll: TrollService
+var soul: SoulService
 
 var _next_id := 1
 var _processed := {}  # request_id -> result
@@ -54,6 +57,9 @@ func _setup(p_defs: DefinitionDB, elf_count: int, map_text: String) -> void:
 	escape = EscapeService.new(self)
 	match_svc = MatchService.new(self)
 	unit_svc = UnitService.new(self)
+	house = HouseService.new(self)
+	troll = TrollService.new(self)
+	soul = SoulService.new(self)
 	for i in range(1, elf_count + 1):
 		var p := PlayerAccount.new()
 		p.id = i
@@ -75,6 +81,7 @@ func _setup(p_defs: DefinitionDB, elf_count: int, map_text: String) -> void:
 	tu.spawned = troll_spawn_tick <= 0
 	tu.ai_enabled = true
 	t.unit_id = tu.id
+	house.create_gates()
 	visibility.recompute()
 
 
@@ -142,13 +149,18 @@ func _dispatch(cmd: Dictionary) -> Dictionary:
 			return unit_svc.command_portal_work(pid)
 		"death_choice":
 			return unit_svc.choose_afterlife(pid, str(cmd["choice"]))
-		"set_soul_authorization":
-			var p: PlayerAccount = players.get(pid)
-			if p == null or not p.alive_original:
-				return {"ok": false, "reason": "not_living_elf"}
-			p.authorize_soul_repair = bool(cmd["enabled"])
-			events.emit_event("soul_authorization_changed", {"player_id": pid, "enabled": p.authorize_soul_repair})
-			return {"ok": true}
+		"enter_house":
+			return house.command_enter(pid)
+		"exit_house":
+			return house.exit_house(pid)
+		"house_repair":
+			return house.press_repair(pid)
+		"troll_skill":
+			return troll.cast(unit_of(pid), str(cmd["skill"]))
+		"soul_skill":
+			return soul.cast(pid, str(cmd["skill"]), int(cmd.get("target_id", -1)))
+		"soul_upgrade":
+			return soul.upgrade(pid, str(cmd["skill"]))
 		"set_troll_ai":
 			var u: UnitState = units.get(players[pid].unit_id) if players.has(pid) else null
 			if u == null or u.team != "trolls":
@@ -184,15 +196,19 @@ func step() -> void:
 		return
 	tick += 1
 	events.current_tick = tick
-	var troll: UnitState = units.get(players[TROLL_PLAYER_ID].unit_id)
-	if troll and not troll.spawned and tick >= troll_spawn_tick:
-		troll.spawned = true
-		events.emit_event("troll_spawned", {"unit_id": troll.id})
+	var tu: UnitState = units.get(players[TROLL_PLAYER_ID].unit_id)
+	if tu and not tu.spawned and tick >= troll_spawn_tick:
+		tu.spawned = true
+		events.emit_event("troll_spawned", {"unit_id": tu.id})
 	visibility.recompute()
+	house.tick_gates()
 	unit_svc.tick_units()
+	troll.tick()
+	soul.tick()
 	building_svc.tick_jobs()
 	escape.tick()
 	repair.tick_repairs()
+	house.tick_repairs()
 	combat.tick_towers()
 	if tick % tick_rate == 0:
 		economy.produce_per_second()

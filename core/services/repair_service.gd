@@ -1,12 +1,10 @@
 class_name RepairService
 extends RefCounted
-## 修繕：速率、跨 tick 付款、修繕站加速、靈魂修復授權。
-##
-## 計價：完整修復 = 累計實付成本 × 70%，按「恢復 HP / 最大 HP」等比例收費。
-## 為了不讓逐 tick 捨去產生免費回血，採「整枚預付、餘額記帳」：
-##   每點 HP 的價格分子 = 累計成本 × 70，一枚錢幣 = 100 × 最大 HP 個分子單位；
-##   不夠時先向付款人收整枚錢幣存進該建築的預付餘額，再扣本次需要的分子。
-##   餘額歸付款人所有、只用在同一座建築；建築升級後歸零（只會讓精靈多付，不會少付）。
+## 修復（V0.7：全部免費）。
+## - 城牆與樹樁門：只靠樹屋修復鈕（HouseService）或精靈靈魂的修復之光。
+## - 其他建築：存活精靈靠近手動修，或靈魂修。
+## - 修繕站：範圍內 +25%，不疊加。
+## - 威嚇怒吼：建築在暫停期間不能被修，之後一段時間修復量 -30%。
 
 var sim: MatchSim
 
@@ -15,66 +13,57 @@ func _init(s: MatchSim) -> void:
 	sim = s
 
 
-func can_be_repaired(inst: BuildingInstance) -> bool:
-	return inst != null and inst.is_functional() and inst.hp < inst.max_hp and inst.team_id == "elves"
+static func is_wall_like(def_id: String) -> bool:
+	return def_id == "wall" or def_id == "stump_gate"
+
+
+## 這個單位能不能修這座建築（不看距離）。
+func can_unit_repair(u: UnitState, inst: BuildingInstance) -> bool:
+	if u == null or not u.on_map() or inst == null or not inst.is_alive() or inst.team_id != "elves":
+		return false
+	if sim.defs.get_def(inst.def_id).is_portal() or inst.hp >= inst.max_hp:
+		return false
+	if u.kind == UnitState.KIND_SOUL:
+		return inst.is_functional() or sim.defs.get_def(inst.def_id).is_gate()
+	if u.kind == UnitState.KIND_ELF:
+		return inst.is_functional() and not is_wall_like(inst.def_id)
+	return false
 
 
 func repair_range() -> int:
 	return int(sim.cfg["repair"]["range_cells"])
 
 
-## 每 tick 的修繕量（整數 HP）。修繕站：任一座完成的修繕站範圍內 +25%，不疊加。
-func hp_per_tick(unit: UnitState, base_hp_per_sec: int) -> int:
+## 修繕站加成（%）：任一座完成的修繕站範圍涵蓋該點即生效，不疊加。
+func aura_bonus_at(p: Vector2) -> int:
 	var bonus := 0
 	for b in sim.buildings.values():
 		var inst: BuildingInstance = b
 		if not inst.is_functional():
 			continue
 		var aura: Dictionary = sim.defs.get_def(inst.def_id).level(inst.level).get("repair_aura", {})
-		if aura.is_empty():
-			continue
-		if inst.center().distance_to(unit.pos) <= float(aura["radius"]):
+		if not aura.is_empty() and inst.center().distance_to(p) <= float(aura["radius"]):
 			bonus = maxi(bonus, int(aura["speed_bonus_percent"]))
-	var per_sec := base_hp_per_sec * (100 + bonus) / 100
-	return maxi(1, per_sec / sim.tick_rate)
+	return bonus
 
 
-## 試著修 hp 點並向 payer 收費。回傳實際恢復量；資源不足回傳 0（完全不修、不扣）。
-func pay_and_restore(inst: BuildingInstance, payer_id: int, hp: int) -> int:
-	hp = mini(hp, inst.max_hp - inst.hp)
-	if hp <= 0:
+## 以「每秒 hp_per_sec」修這座建築一個 tick。回傳實際恢復量。小數用千分位暫存，不會因捨去少修或多修。
+func restore_tick(inst: BuildingInstance, hp_per_sec: int, bonus_percent: int) -> int:
+	if inst.hp >= inst.max_hp or sim.tick < inst.repair_block_until:
 		return 0
-	var ratio := int(sim.cfg["repair"]["cost_ratio_percent"])
-	var denom := 100 * inst.max_hp
-	var need_g := hp * inst.total_paid_g * ratio
-	var need_w := hp * inst.total_paid_w * ratio
-	var credit: Dictionary = inst.repair_credit.get(payer_id, {"g": 0, "w": 0})
-	var coins_g := _coins_needed(need_g - int(credit["g"]), denom)
-	var coins_w := _coins_needed(need_w - int(credit["w"]), denom)
-	if not sim.economy.spend(payer_id, coins_g, coins_w, "repair"):
+	var mult := 100 + bonus_percent
+	if sim.tick < inst.repair_slow_until:
+		mult = mult * (100 - inst.repair_slow_percent) / 100
+	inst.repair_carry_milli += hp_per_sec * mult * 10 / sim.tick_rate
+	var whole := inst.repair_carry_milli / 1000
+	inst.repair_carry_milli -= whole * 1000
+	whole = mini(whole, inst.max_hp - inst.hp)
+	if whole <= 0:
 		return 0
-	credit["g"] = int(credit["g"]) + coins_g * denom - need_g
-	credit["w"] = int(credit["w"]) + coins_w * denom - need_w
-	inst.repair_credit[payer_id] = credit
-	inst.hp += hp
-	return hp
-
-
-static func _coins_needed(shortfall: int, denom: int) -> int:
-	if shortfall <= 0:
-		return 0
-	return (shortfall + denom - 1) / denom
-
-
-## 找一位已開啟授權、且是存活原始精靈的付款人（依玩家 ID 順序）。
-func soul_payer() -> int:
-	var ids := sim.players.keys()
-	ids.sort()
-	for pid in ids:
-		var p: PlayerAccount = sim.players[pid]
-		if p.alive_original and p.authorize_soul_repair:
-			return pid
-	return -1
+	inst.hp += whole
+	if inst.state == BuildingInstance.ST_GATE_BROKEN and inst.hp >= inst.max_hp:
+		sim.house.on_gate_repaired(inst)
+	return whole
 
 
 func start_repair(pid: int, iid: int) -> Dictionary:
@@ -87,10 +76,12 @@ func start_repair(pid: int, iid: int) -> Dictionary:
 	if u == null or not u.alive or (u.kind != UnitState.KIND_ELF and u.kind != UnitState.KIND_SOUL):
 		return {"ok": false, "reason": "cannot_repair"}
 	var inst: BuildingInstance = sim.buildings.get(iid)
-	if not can_be_repaired(inst):
+	if inst and u.kind == UnitState.KIND_ELF and is_wall_like(inst.def_id):
+		return {"ok": false, "reason": "walls_use_house_button"}
+	if u.kind == UnitState.KIND_ELF and u.inside_house != -1:
+		sim.house.exit_house(pid)
+	if not can_unit_repair(u, inst):
 		return {"ok": false, "reason": "not_repairable"}
-	if u.kind == UnitState.KIND_SOUL and soul_payer() == -1:
-		return {"ok": false, "reason": "no_authorized_payer"}
 	if u.kind == UnitState.KIND_ELF:
 		p.job_instance_id = -1  # 修繕也是個人動作，會中斷施工
 	sim.unit_svc.set_order(u, {"type": "repair", "instance_id": iid, "restored": 0})
@@ -112,30 +103,20 @@ func tick_repairs() -> void:
 		if inst.hp >= inst.max_hp:
 			_stop(u, "full")
 			continue
-		if not inst.is_functional():
+		if not can_unit_repair(u, inst):
 			continue
 		if GridMath.cheb_cell_to_rect(u.cell(), inst.origin, inst.size) > repair_range():
 			continue  # 還在走過去
-		var payer := u.player_id
-		var base := int(sim.cfg["repair"]["hp_per_sec"])
+		var rate := int(sim.cfg["repair"]["hp_per_sec"])
 		if u.kind == UnitState.KIND_SOUL:
-			payer = soul_payer()
-			if payer == -1:
-				_stop(u, "no_authorized_payer")
-				continue
-			base = int(sim.cfg["soul"]["repair_hp_per_sec"])
+			var lv := int(u.soul_skills.get("repair", 1))
+			rate = int(sim.cfg["soul"]["skills"]["repair"]["hp_per_sec"][lv - 1])
 			var cost := float(sim.cfg["soul"]["repair_energy_per_sec"]) / sim.tick_rate
 			if u.energy < cost:
 				continue  # 能量不足：暫停，等回復
 			u.energy -= cost
-		elif not sim.players[payer].alive_original:
-			_stop(u, "payer_dead")
-			continue
-		var restored := pay_and_restore(inst, payer, hp_per_tick(u, base))
-		if restored > 0:
-			u.order["restored"] = int(u.order.get("restored", 0)) + restored
-		else:
-			_stop(u, "insufficient_resources")
+		var restored := restore_tick(inst, rate, aura_bonus_at(u.pos))
+		u.order["restored"] = int(u.order.get("restored", 0)) + restored
 
 
 func _stop(u: UnitState, why: String) -> void:

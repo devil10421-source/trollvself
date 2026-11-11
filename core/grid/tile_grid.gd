@@ -6,6 +6,7 @@ extends RefCounted
 ##   P  星界傳送門保護區 escape_portal_zone
 ##   g  保護區入口（可通行、可建城牆，不屬於保護區）
 ##   T  巨魔出生區（不可建造）           1/2/3 精靈出生點（不可建造）
+##   D  精靈基地入口的樹樁門（可通行地形；門關上時由門實體占格，不可建造）
 
 var width := 0
 var height := 0
@@ -15,6 +16,7 @@ var gate := PackedByteArray()         # 1 = 保護區入口
 var no_build := PackedByteArray()     # 1 = 出生區，不可建造
 var troll_spawn_cells: Array[Vector2i] = []
 var elf_spawns := {}                  # int(1..n) -> Vector2i
+var stump_gate_cells: Array[Vector2i] = []
 var occupancy := {}                   # Vector2i -> instance_id
 
 
@@ -51,6 +53,9 @@ func load_from_text(text: String) -> String:
 					portal_zone[i] = 1
 				"g":
 					gate[i] = 1
+				"D":
+					no_build[i] = 1
+					stump_gate_cells.append(Vector2i(x, y))
 				"T":
 					no_build[i] = 1
 					troll_spawn_cells.append(Vector2i(x, y))
@@ -105,6 +110,33 @@ func occupy(origin: Vector2i, size: Vector2i, instance_id: int) -> void:
 func vacate(origin: Vector2i, size: Vector2i) -> void:
 	for c in GridMath.rect_cells(origin, size):
 		occupancy.erase(c)
+
+
+## 把相鄰的 D 格分組，每組是一扇門。回傳 [{origin, size}]。
+func stump_gate_groups() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	var seen := {}
+	for c in stump_gate_cells:
+		if seen.has(c):
+			continue
+		var group: Array[Vector2i] = [c]
+		seen[c] = true
+		var head := 0
+		while head < group.size():
+			var cur := group[head]
+			head += 1
+			for d in GridMath.DIRS4:
+				var n := cur + d
+				if not seen.has(n) and stump_gate_cells.has(n):
+					seen[n] = true
+					group.append(n)
+		var lo := group[0]
+		var hi := group[0]
+		for g in group:
+			lo = Vector2i(mini(lo.x, g.x), mini(lo.y, g.y))
+			hi = Vector2i(maxi(hi.x, g.x), maxi(hi.y, g.y))
+		out.append({"origin": lo, "size": hi - lo + Vector2i.ONE})
+	return out
 
 
 func portal_zone_cells() -> Array[Vector2i]:

@@ -6,7 +6,11 @@ extends "res://tests/test_case.gd"
 func test_data_table_matches_spec() -> void:
 	var defs := DefinitionDB.load_default()
 	check(defs.is_valid(), "數值表驗證失敗：%s" % str(defs.errors))
-	eq(defs.building_order.size(), 9, "首版應有 9 種建築")
+	var buildable := 0
+	for id in defs.building_order:
+		if defs.get_def(id).buildable:
+			buildable += 1
+	eq(buildable, 9, "首版應有 9 種可建造建築（另有地圖自動生成的樹樁門）")
 	var h := defs.get_def("elf_house")
 	eq(h.level(4)["cost_g"], 1200, "樹屋 Lv4 追加金幣")
 	eq(h.level(4)["gold_per_sec"], 11, "樹屋 Lv4 產量")
@@ -37,7 +41,7 @@ func test_same_cell_and_duplicate_request() -> void:
 	eq(r3["reason"], "occupied", "同一格不能有兩座建築")
 	var r4 := sim.submit({"type": "build", "player_id": 1, "def_id": "elf_house", "origin": [32, 3]})
 	eq(r4["reason"], "occupied", "2×2 占格與城牆重疊應被拒")
-	eq(sim.buildings.size(), 1, "只能有一座建築")
+	eq(player_buildings(sim).size(), 1, "只能有一座建築")
 	eq(sim.players[1].gold, 250 - 40, "只扣一次 40 金")
 	# 不能蓋在單位身上、地形上、出生區
 	eq(sim.submit({"type": "build", "player_id": 1, "def_id": "wall", "origin": [35, 4]})["reason"], "spawn_area", "精靈出生點不可建造")
@@ -107,7 +111,7 @@ func test_cancel_refund() -> void:
 	var r := sim.submit({"type": "build", "player_id": 1, "def_id": "wall", "origin": [33, 4]})
 	var res := sim.submit({"type": "cancel", "player_id": 1, "instance_id": r["instance_id"]})
 	eq([res["refund_g"], res["refund_w"]], [20, 7], "未施工取消：退 50%（無條件捨去）")
-	eq(sim.buildings.size(), 0, "取消後建築移除")
+	eq(player_buildings(sim).size(), 0, "取消後建築移除")
 	eq(sim.grid.occupant(Vector2i(33, 4)), -1, "占格釋放")
 
 
@@ -146,38 +150,30 @@ func test_upgrade_keeps_hp_ratio() -> void:
 	eq([wall.hp, wall.max_hp], [1800, 3600], "50% 血量升級後仍為 50%")
 
 
-func test_repair_costs_money_and_no_free_micro_repair() -> void:
+func test_repair_is_free_and_walls_need_house_button() -> void:
 	var sim := new_sim()
-	var wall := add_building(sim, 1, "wall", Vector2i(33, 5), 1)  # 累計 40G/15W，650 HP
-	wall.hp = 325
-	set_res(sim, 1, 1000, 1000)
-	check(sim.submit({"type": "repair", "player_id": 1, "instance_id": wall.instance_id})["ok"], "開始修繕")
-	check(run_until(sim, func(): return wall.hp == wall.max_hp, 30), "修滿")
-	# 修一半 = 40×70%×½ = 14 金；15×70%×½ = 5.25 → 預付制收 6 木
-	eq([1000 - sim.players[1].gold, 1000 - sim.players[1].wood], [14, 6], "修繕收費")
-	# 微量修繕：一次修 1 HP，重複 325 次，總收費不得低於等比例金額
-	var w2 := add_building(sim, 1, "wall", Vector2i(31, 5), 1)
-	w2.hp = 325
-	set_res(sim, 1, 1000, 1000)
-	for i in 325:
-		sim.repair.pay_and_restore(w2, 1, 1)
-	eq([1000 - sim.players[1].gold, 1000 - sim.players[1].wood], [14, 6], "1 HP 小額修繕不能少付")
-	# 沒錢就不修
-	w2.hp = 100
-	set_res(sim, 1, 0, 0)
-	eq(sim.repair.pay_and_restore(w2, 1, 4), 0, "沒錢不能回血")
-	eq(w2.hp, 100, "HP 不變")
+	var tower := add_building(sim, 1, "arrow_tower", Vector2i(33, 5), 1)
+	tower.hp = 300
+	set_res(sim, 1, 100, 100)
+	check(sim.submit({"type": "repair", "player_id": 1, "instance_id": tower.instance_id})["ok"], "精靈可手動修塔")
+	check(run_until(sim, func(): return tower.hp == tower.max_hp, 30), "修滿")
+	eq([sim.players[1].gold, sim.players[1].wood], [100, 100], "修復完全免費")
+	var wall := add_building(sim, 1, "wall", Vector2i(31, 5), 1)
+	wall.hp = 100
+	eq(sim.submit({"type": "repair", "player_id": 1, "instance_id": wall.instance_id})["reason"], "walls_use_house_button", "城牆不能手動修")
 
 
 func test_repair_post_speed() -> void:
 	var sim := new_sim()
-	var wall := add_building(sim, 1, "wall", Vector2i(33, 5), 1)
-	var u := sim.unit_of(1)
-	eq(sim.repair.hp_per_tick(u, 40), 4, "基準 40 HP/秒")
+	var p := Vector2(34.5, 5.5)
+	eq(sim.repair.aura_bonus_at(p), 0, "沒有修繕站時無加成")
 	add_building(sim, 1, "repair_post", Vector2i(36, 6), 1)
 	add_building(sim, 2, "repair_post", Vector2i(37, 6), 1)
-	eq(sim.repair.hp_per_tick(u, 40), 5, "修繕站範圍內 50 HP/秒，兩座不疊加")
-	check(wall != null, "")
+	eq(sim.repair.aura_bonus_at(p), 25, "修繕站範圍內 +25%，兩座不疊加")
+	var tower := add_building(sim, 1, "arrow_tower", Vector2i(33, 5), 1)
+	tower.hp = 100
+	sim.repair.restore_tick(tower, 40, 25)
+	eq(tower.hp, 105, "40 HP/秒 × 125% = 每 tick 5")
 
 
 func test_frost_does_not_stack_and_tower_targets() -> void:

@@ -56,7 +56,7 @@ func builder_range() -> int:
 func unit_on_cells(cells: Dictionary) -> bool:
 	for u in sim.units.values():
 		var unit: UnitState = u
-		if unit.alive and unit.spawned and cells.has(unit.cell()):
+		if unit.on_map() and cells.has(unit.cell()):
 			return true
 	return false
 
@@ -68,6 +68,8 @@ func cell_problem(c: Vector2i) -> String:
 		return "out_of_bounds"
 	if g.is_terrain_blocked(c):
 		return "blocked_terrain"
+	if g.stump_gate_cells.has(c):
+		return "gate_cell"
 	if g.no_build[g.idx(c)] == 1:
 		return "spawn_area"
 	if g.occupancy.has(c):
@@ -88,6 +90,8 @@ func validate_place(pid: int, def_id: String, origin: Vector2i) -> Dictionary:
 		return {"ok": false, "reason": "unknown_building"}
 	if d.is_portal():
 		return {"ok": false, "reason": "use_portal_start"}
+	if not d.buildable:
+		return {"ok": false, "reason": "not_buildable"}
 	if d.max_per_player > 0 and count_owned(pid, def_id) >= d.max_per_player:
 		return {"ok": false, "reason": "limit_reached"}
 	var lv1 := d.level(1)
@@ -163,6 +167,8 @@ func validate_upgrade(pid: int, iid: int) -> Dictionary:
 	var d: BuildingDefinition = sim.defs.get_def(inst.def_id)
 	if d.is_portal():
 		return {"ok": false, "reason": "use_portal_next_stage"}
+	if not d.buildable:
+		return {"ok": false, "reason": "not_buildable"}
 	if inst.state != BuildingInstance.ST_ACTIVE:
 		return {"ok": false, "reason": "busy"}
 	if inst.level >= d.max_level():
@@ -234,11 +240,17 @@ func demolish(pid: int, iid: int) -> Dictionary:
 		return {"ok": false, "reason": "not_owner"}
 	if sim.defs.get_def(inst.def_id).is_portal():
 		return {"ok": false, "reason": "portal_not_demolishable"}
+	if not sim.defs.get_def(inst.def_id).buildable:
+		return {"ok": false, "reason": "not_demolishable"}
 	if inst.state != BuildingInstance.ST_ACTIVE:
 		return {"ok": false, "reason": "cancel_job_first"}
 	var pct := int(sim.cfg["construction"]["demolish_refund_percent"])
 	sim.economy.grant(pid, inst.total_paid_g * pct / 100, inst.total_paid_w * pct / 100, "demolish_refund")
+	if inst.def_id == "elf_house":
+		sim.house.on_house_destroyed(inst, false)
 	_remove(inst)
+	if inst.def_id == "elf_house":
+		sim.house.refresh_gate_hp(pid)
 	sim.events.emit_event("building_demolished", {"player_id": pid, "instance_id": iid})
 	return {"ok": true}
 
@@ -255,6 +267,8 @@ func assign_job(pid: int, iid: int) -> Dictionary:
 		return {"ok": false, "reason": "no_job_here"}
 	p.job_instance_id = iid
 	var u := builder_unit(pid)
+	if u and u.inside_house != -1:
+		sim.house.exit_house(pid)
 	if u:
 		sim.unit_svc.set_order(u, {"type": "build", "instance_id": iid})
 	return {"ok": true}
@@ -265,7 +279,9 @@ func is_builder_present(inst: BuildingInstance) -> bool:
 	if p == null or not p.alive_original or p.job_instance_id != inst.instance_id:
 		return false
 	var u := builder_unit(p.id)
-	if u == null or u.order.get("type") != "build" or u.order.get("instance_id") != inst.instance_id:
+	if u == null or not u.on_map() or u.order.get("type") != "build" or u.order.get("instance_id") != inst.instance_id:
+		return false
+	if sim.tick < u.build_block_until:
 		return false
 	return GridMath.cheb_cell_to_rect(u.cell(), inst.origin, inst.size) <= builder_range()
 
@@ -305,11 +321,13 @@ func _complete_job(inst: BuildingInstance) -> void:
 		inst.max_hp = new_lv["hp"]
 		if sim.cfg["construction"].get("keep_hp_ratio_on_upgrade", true):
 			inst.hp = clampi(inst.hp * inst.max_hp / maxi(1, old_max), 1, inst.max_hp)
-		inst.repair_credit = {}
+		inst.repair_carry_milli = 0
 		inst.state = BuildingInstance.ST_ACTIVE
 		_release_job(inst)
 		_clear_job_fields(inst)
 		sim.events.emit_event("building_upgraded", {"instance_id": inst.instance_id, "def_id": inst.def_id, "level": inst.level})
+	if inst.def_id == "elf_house":
+		sim.house.refresh_gate_hp(inst.owner_player_id)
 
 
 func _clear_job_fields(inst: BuildingInstance) -> void:
@@ -346,5 +364,9 @@ func _remove(inst: BuildingInstance) -> void:
 func destroy(inst: BuildingInstance, attacker_unit_id: int) -> void:
 	if not inst.is_alive():
 		return
+	if inst.def_id == "elf_house":
+		sim.house.on_house_destroyed(inst)
 	_remove(inst)
+	if inst.def_id == "elf_house":
+		sim.house.refresh_gate_hp(inst.owner_player_id)
 	sim.events.emit_event("building_destroyed", {"instance_id": inst.instance_id, "def_id": inst.def_id, "owner": inst.owner_player_id, "attacker_unit_id": attacker_unit_id})

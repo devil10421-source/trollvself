@@ -20,7 +20,7 @@ func recompute() -> void:
 		visible[team] = arr
 	for u in sim.units.values():
 		var unit: UnitState = u
-		if unit.alive and unit.spawned:
+		if unit.on_map():
 			_reveal(unit.team, unit.pos, unit.vision)
 	for b in sim.buildings.values():
 		var inst: BuildingInstance = b

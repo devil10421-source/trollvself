@@ -159,7 +159,7 @@ func test_troll_kills_elf() -> void:
 	eq(sim.players[1].afterlife, "pending", "死後等待選擇陣營")
 
 
-func test_afterlife_not_counted_and_soul_repair_needs_authorization() -> void:
+func test_afterlife_not_counted_and_soul_repair_is_free() -> void:
 	var sim := new_sim()
 	var wall := add_building(sim, 3, "wall", Vector2i(33, 5), 1)
 	wall.hp = 300
@@ -170,30 +170,23 @@ func test_afterlife_not_counted_and_soul_repair_needs_authorization() -> void:
 	eq(sim.match_svc.alive_original_count(), 1, "靈魂與僕從都不算存活原始精靈")
 	eq(sim.unit_of(2).team, "trolls", "僕從屬於巨魔方")
 	teleport(sim.unit_of(1), Vector2i(34, 5))
-	eq(sim.submit({"type": "repair", "player_id": 1, "instance_id": wall.instance_id})["reason"], "no_authorized_payer", "沒有授權不能修")
-	sim.run_seconds(2)
-	eq(wall.hp, 300, "未授權 HP 不變")
-	sim.submit({"type": "set_soul_authorization", "player_id": 3, "enabled": true})
 	set_res(sim, 3, 500, 500)
-	check(sim.submit({"type": "repair", "player_id": 1, "instance_id": wall.instance_id})["ok"], "授權後可修")
+	check(sim.submit({"type": "repair", "player_id": 1, "instance_id": wall.instance_id})["ok"], "靈魂可以修城牆")
 	sim.run_seconds(2)
-	check(wall.hp > 300, "靈魂修復生效")
-	check(sim.players[3].gold < 500, "由授權的存活精靈付費")
-	sim.submit({"type": "set_soul_authorization", "player_id": 3, "enabled": false})
-	var hp := wall.hp
-	sim.run_seconds(2)
-	eq(wall.hp, hp, "撤銷授權後停止回血")
+	eq(wall.hp, 380, "修復之光 Lv1 每秒 40")
+	eq([sim.players[3].gold, sim.players[3].wood], [500, 500], "不花任何人的資源")
+	check(sim.unit_of(1).energy < 100.0, "消耗靈魂能量")
 	eq(sim.submit({"type": "death_choice", "player_id": 1, "choice": "minion"})["reason"], "no_pending_choice", "只能選一次")
 
 
 func test_troll_must_break_walls_to_enter() -> void:
 	var sim := new_sim()
-	var w1 := add_building(sim, 1, "wall", Vector2i(35, 9), 1)
-	var w2 := add_building(sim, 1, "wall", Vector2i(36, 9), 1)
+	var w1 := add_building(sim, 1, "wall", Vector2i(35, 10), 1)
+	var w2 := add_building(sim, 1, "wall", Vector2i(36, 10), 1)
 	var t := spawn_troll(sim, Vector2i(35, 14))
 	t.ai_enabled = true
 	check(run_until(sim, func(): return sim.events.count("building_damaged") > 0, 15), "巨魔先打入口城牆")
 	for e in sim.events.find_all("building_damaged"):
 		check(e["data"]["instance_id"] in [w1.instance_id, w2.instance_id], "被打的是擋路的城牆")
-	check(t.cell().y >= 10, "牆完整時巨魔進不了基地")
+	check(t.cell().y >= 11, "牆完整時巨魔進不了基地")
 	check(run_until(sim, func(): return not sim.players[1].alive_original, 60), "破牆後追殺精靈")

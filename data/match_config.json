@@ -1,5 +1,5 @@
 {
-  "_note": "對局設定。標「placeholder」的是規格留待下一份文件決定的占位值，只為讓原型能玩。",
+  "_note": "對局設定。數值為首輪提案初值（角色設計提案 V0.7），未平衡，請用模擬與實測調整。",
   "tick_rate": 10,
   "match_time_limit_sec": 1500,
   "portal_unlock_time_sec": 720,
@@ -16,9 +16,31 @@
   },
 
   "repair": {
+    "_note": "所有修復免費。精靈手動修只限非城牆建築；城牆與樹樁門用樹屋修復鈕。",
     "hp_per_sec": 40,
-    "cost_ratio_percent": 70,
-    "range_cells": 2
+    "range_cells": 2,
+    "repair_post_applies_to_house_button": true
+  },
+
+  "house": {
+    "enter_range_cells": 2,
+    "inside_gold_bonus_percent": 50,
+    "eject_stun_sec": 1.0,
+    "repair_button": {
+      "duration_sec": 3,
+      "_levels": "依樹屋等級 Lv1..Lv4：每秒修復量與冷卻（冷卻從按下起算）",
+      "levels": [
+        { "hp_per_sec": 20, "cooldown_sec": 6 },
+        { "hp_per_sec": 30, "cooldown_sec": 5 },
+        { "hp_per_sec": 45, "cooldown_sec": 4 },
+        { "hp_per_sec": 65, "cooldown_sec": 3 }
+      ]
+    }
+  },
+
+  "gate": {
+    "_note": "樹樁門：地圖 D 格。精靈進自己的樹屋就關門（擋巨魔與精靈），可被打破，打破後保持開啟直到修滿。",
+    "hp_by_house_level": [1000, 1000, 2000, 3500, 6000]
   },
 
   "portal": {
@@ -29,8 +51,53 @@
 
   "building_default_vision": 4,
 
-  "elf":    { "hp": 120, "move_speed": 4.0, "vision": 6 },
-  "soul":   { "move_speed": 4.5, "vision": 6, "energy_max": 100, "energy_regen_per_sec": 2, "repair_energy_per_sec": 5, "repair_hp_per_sec": 40, "_placeholder": true },
-  "troll":  { "hp": 3000, "damage": 45, "attack_interval": 1.0, "attack_range": 1.5, "move_speed": 3.2, "vision": 8, "spawn_delay_sec": 90, "respawn_sec": 20, "reward_gold_per_effective_hp": 0.1, "_placeholder": true },
-  "minion": { "hp": 1000, "damage": 20, "attack_interval": 1.2, "attack_range": 1.5, "move_speed": 2.8, "vision": 6, "respawn_sec": 20, "reward_gold_per_effective_hp": 0.05, "_placeholder": true }
+  "elf": { "hp": 120, "move_speed": 5.0, "vision": 6 },
+
+  "soul": {
+    "move_speed": 4.5, "vision": 6,
+    "energy_max": 100, "energy_regen_per_sec": 2, "repair_energy_per_sec": 5,
+    "point_every_sec": 90, "max_skill_level": 3,
+    "skills": {
+      "repair": { "hp_per_sec": [40, 50, 60] },
+      "mark":   { "bonus_percent": [10, 15, 20], "duration_sec": 5, "range": 6, "cooldown_sec": 15 },
+      "root":   { "duration_sec": [0.8, 1.0, 1.2], "range": 5, "cooldown_sec": 25, "immunity_sec": 4 }
+    }
+  },
+
+  "troll": {
+    "attack_interval": 1.0, "attack_range": 1.5, "move_speed": 3.2, "vision": 8,
+    "spawn_delay_sec": 90,
+    "respawn_base_sec": 15, "respawn_per_level_sec": 2,
+    "reward_gold_per_effective_hp": 0.1,
+    "xp_per_effective_hp": 1, "xp_per_elf_kill": 1500,
+    "nest_regen_percent_per_sec": 8,
+    "field_regen_percent_per_sec": 1, "field_regen_delay_sec": 6,
+    "ai_retreat_hp_percent": 30, "ai_return_hp_percent": 95,
+    "_levels": "xp = 升下一級所需經驗",
+    "levels": [
+      { "xp": 600,  "hp": 2000,  "damage": 40 },
+      { "xp": 900,  "hp": 2400,  "damage": 50 },
+      { "xp": 1300, "hp": 2900,  "damage": 62 },
+      { "xp": 1800, "hp": 3500,  "damage": 76 },
+      { "xp": 2500, "hp": 4200,  "damage": 92 },
+      { "xp": 3400, "hp": 5000,  "damage": 110 },
+      { "xp": 4500, "hp": 6000,  "damage": 132 },
+      { "xp": 6000, "hp": 7200,  "damage": 158 },
+      { "xp": 8000, "hp": 8600,  "damage": 190 },
+      { "xp": 0,    "hp": 10000, "damage": 230 }
+    ],
+    "skills": {
+      "recall":  { "unlock_level": 1, "cooldown_sec": 40, "channel_sec": 3 },
+      "smash":   { "unlock_level": 1, "cooldown_sec": 10, "multiplier": 3 },
+      "roar":    { "unlock_level": 3, "cooldown_sec": 35, "radius": 5, "pause_sec": 1.5, "repair_slow_percent": 30, "repair_slow_sec": 5 },
+      "rampage": { "unlock_level": 6, "cooldown_sec": 60, "duration_sec": 8, "attack_speed_percent": 50, "damage_taken_percent": 20 }
+    }
+  },
+
+  "minion": {
+    "attack_interval": 1.2, "attack_range": 1.5, "move_speed": 2.8, "vision": 6,
+    "level_offset": -2, "stat_percent": 45,
+    "reward_gold_per_effective_hp": 0.05,
+    "skills": ["recall", "smash"]
+  }
 }

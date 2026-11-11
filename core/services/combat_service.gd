@@ -15,6 +15,8 @@ func is_attackable_building(inst: BuildingInstance) -> bool:
 	if inst == null or not inst.is_alive() or inst.team_id != "elves":
 		return false
 	var d: BuildingDefinition = sim.defs.get_def(inst.def_id)
+	if d.is_gate():
+		return inst.state == BuildingInstance.ST_GATE_CLOSED  # 開著或已破的門沒有東西可打
 	return d.targetable_by_enemies and d.damageable
 
 
@@ -35,8 +37,13 @@ func damage_building(attacker: UnitState, inst: BuildingInstance, amount: int) -
 		"hp": inst.hp, "attacker_unit_id": attacker.id if attacker else -1,
 	})
 	_reward(attacker, effective)
+	if attacker and attacker.team == "trolls":
+		sim.troll.add_xp(int(effective * float(sim.cfg["troll"]["xp_per_effective_hp"])), "building_damage")
 	if inst.hp <= 0:
-		sim.building_svc.destroy(inst, attacker.id if attacker else -1)
+		if sim.defs.get_def(inst.def_id).is_gate():
+			sim.house.break_gate(inst, attacker.id if attacker else -1)
+		else:
+			sim.building_svc.destroy(inst, attacker.id if attacker else -1)
 	return effective
 
 
@@ -55,17 +62,27 @@ func _reward(attacker: UnitState, effective_hp: int) -> void:
 
 
 func damage_unit(attacker: UnitState, target: UnitState, amount: int) -> int:
-	if target == null or not target.alive or not target.spawned or amount <= 0:
+	if target == null or not target.on_map() or amount <= 0:
 		return 0
 	if attacker and attacker.team == target.team:
 		return 0
 	if target.kind == UnitState.KIND_SOUL:
 		return 0  # 靈魂不是可攻擊目標（控制/戰鬥技能留待技能規格）
+	if target.team == "trolls":
+		var pct := sim.troll.damage_taken_mult_percent(target)
+		if attacker == null and sim.tick < target.marked_until:
+			pct += target.marked_bonus  # 星光印記：塔的傷害加成
+		amount = amount * pct / 100
 	var effective := mini(amount, target.hp)
 	target.hp -= effective
+	if target.team == "trolls":
+		sim.troll.on_damaged(target)
 	sim.events.emit_event("unit_damaged", {"unit_id": target.id, "amount": effective, "hp": target.hp})
 	if target.hp <= 0:
+		var was_elf := target.kind == UnitState.KIND_ELF
 		sim.unit_svc.kill_unit(target)
+		if was_elf and attacker and attacker.team == "trolls":
+			sim.troll.add_xp(int(sim.cfg["troll"]["xp_per_elf_kill"]), "elf_kill")
 	return effective
 
 
@@ -110,7 +127,7 @@ func pick_tower_target(inst: BuildingInstance, rng: float) -> UnitState:
 	var c := inst.center()
 	for u in sim.units.values():
 		var unit: UnitState = u
-		if not unit.alive or not unit.spawned or unit.team != "trolls":
+		if not unit.on_map() or unit.team != "trolls":
 			continue
 		if not sim.visibility.is_visible_to("elves", unit.pos):
 			continue

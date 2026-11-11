@@ -104,6 +104,19 @@
       ]
     },
     {
+      "id": "stump_gate",
+      "name": "樹樁門",
+      "category": "gate",
+      "footprint": [2, 1],
+      "max_per_player": 0,
+      "buildable": false,
+      "color": "#8b5a2b",
+      "_note": "地圖 D 格自動生成。HP 依擁有者樹屋等級（match_config.gate.hp_by_house_level），不可建造/升級/拆除。",
+      "levels": [
+        { "level": 1, "name": "樹樁門", "cost": { "G": 0, "W": 0 }, "time": 1, "hp": 1000, "requires": [] }
+      ]
+    },
+    {
       "id": "escape_portal",
       "name": "星界傳送門",
       "category": "victory",

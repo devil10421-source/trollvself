@@ -50,7 +50,7 @@ func _draw() -> void:
 	# 單位
 	for u in sim.units.values():
 		var unit: UnitState = u
-		if not unit.alive or not unit.spawned:
+		if not unit.on_map():
 			continue
 		if unit.team != team and not sim.visibility.is_visible_to(team, unit.pos):
 			continue
@@ -80,8 +80,32 @@ func _any_visible(sim: MatchSim, team: String, inst: BuildingInstance) -> bool:
 	return false
 
 
+func _draw_gate(inst: BuildingInstance, font: Font) -> void:
+	var r := Rect2(Vector2(inst.origin) * CELL + Vector2(1, 6), Vector2(inst.size) * CELL - Vector2(2, 12))
+	var wood := Color("#8b5a2b")
+	match inst.state:
+		BuildingInstance.ST_GATE_CLOSED:
+			draw_rect(r, wood)
+			for i in range(1, inst.size.x * 2):
+				var x := r.position.x + r.size.x * i / (inst.size.x * 2)
+				draw_line(Vector2(x, r.position.y), Vector2(x, r.end.y), wood.darkened(0.4), 2.0)
+			draw_string(font, r.position + Vector2(4, r.size.y * 0.5 + 5), "門 關", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
+		BuildingInstance.ST_GATE_OPEN:
+			draw_rect(Rect2(r.position, Vector2(6, r.size.y)), wood)
+			draw_rect(Rect2(Vector2(r.end.x - 6, r.position.y), Vector2(6, r.size.y)), wood)
+		BuildingInstance.ST_GATE_BROKEN:
+			for i in 5:
+				draw_rect(Rect2(r.position + Vector2(6 + i * 11, 4 + (i % 2) * 8), Vector2(7, 5)), wood.darkened(0.2))
+			draw_string(font, r.position + Vector2(4, r.size.y + 4), "破", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("#c0392b"))
+	if inst.hp < inst.max_hp:
+		_bar(Rect2(r.position + Vector2(0, r.size.y - 4), Vector2(r.size.x, 4)), float(inst.hp) / maxf(1.0, inst.max_hp), Color("#3cc24a"))
+
+
 func _draw_building(sim: MatchSim, inst: BuildingInstance, font: Font) -> void:
 	var d: BuildingDefinition = sim.defs.get_def(inst.def_id)
+	if d.is_gate():
+		_draw_gate(inst, font)
+		return
 	var r := Rect2(Vector2(inst.origin) * CELL + Vector2(2, 2), Vector2(inst.size) * CELL - Vector2(4, 4))
 	var col := d.color
 	if inst.state == BuildingInstance.ST_CONSTRUCTING:
@@ -97,6 +121,11 @@ func _draw_building(sim: MatchSim, inst: BuildingInstance, font: Font) -> void:
 		label = "%s%s" % [main.short_name(inst.def_id), ("" if inst.level == 0 else str(inst.level))]
 	var fs := 11 if inst.size.x == 1 else 14
 	draw_string(font, r.position + Vector2(3, r.size.y * 0.5 + 5), label, HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 4, fs, Color.BLACK)
+	var seen: bool = main.view_team() == "elves" or _any_visible(sim, main.view_team(), inst)
+	if inst.def_id == "elf_house" and seen and sim.house.is_inside(inst.owner_player_id):
+		draw_string(font, r.position + Vector2(r.size.x - 22, 18), "Zz", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("#1d3d8f"))
+	if inst.def_id == "elf_house" and seen and sim.house.repair_active(inst.owner_player_id):
+		draw_arc(inst.center() * CELL, r.size.x * 0.6, 0, TAU, 32, Color("#4fd0ff"), 2.0)
 	if d.is_portal():
 		# 傳送門只顯示施工進度，不顯示 HP
 		if sim.escape.status == EscapeService.STATUS_BUILDING:
@@ -136,15 +165,26 @@ func _draw_unit(sim: MatchSim, u: UnitState, font: Font) -> void:
 		draw_arc(p, radius + 4, 0, TAU, 24, Color.YELLOW, 2.0)
 	if u.strongest_slow(sim.tick) > 0:
 		draw_arc(p, radius + 2, 0, TAU, 24, Color("#5ab8d9"), 3.0)
+	if sim.tick < u.rooted_until:
+		draw_arc(p, radius + 6, 0, TAU, 8, Color("#3f9d3f"), 3.0)
+	if sim.tick < u.marked_until:
+		draw_string(font, p + Vector2(radius - 2, -radius), "★", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#ffd400"))
+	if sim.tick < u.rampage_until:
+		draw_arc(p, radius + 3, 0, TAU, 24, Color("#ff5a1f"), 2.0)
+	if sim.tick < u.stunned_until:
+		draw_string(font, p + Vector2(-8, -radius - 10), "暈", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
+	if u.channel_kind == "recall":
+		var total := float(sim.cfg["troll"]["skills"]["recall"]["channel_sec"]) * sim.tick_rate
+		_bar(Rect2(p + Vector2(-radius, radius + 4), Vector2(radius * 2, 4)), 1.0 - float(u.channel_until - sim.tick) / total, Color("#b07cff"))
 	if u.kind != UnitState.KIND_SOUL:
 		_bar(Rect2(p + Vector2(-radius, -radius - 7), Vector2(radius * 2, 4)), float(u.hp) / maxf(1.0, u.max_hp), Color("#e04040"))
 	var tag := ""
 	match u.kind:
 		UnitState.KIND_ELF: tag = str(u.player_id)
 		UnitState.KIND_SOUL: tag = "魂"
-		UnitState.KIND_TROLL: tag = "巨"
-		UnitState.KIND_MINION: tag = "僕"
-	draw_string(font, p + Vector2(-6, 5), tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color.WHITE if u.kind != UnitState.KIND_SOUL else Color.BLACK)
+		UnitState.KIND_TROLL: tag = "巨%d" % u.level
+		UnitState.KIND_MINION: tag = "僕%d" % u.level
+	draw_string(font, p + Vector2(-6 if tag.length() < 2 else -11, 5), tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color.WHITE if u.kind != UnitState.KIND_SOUL else Color.BLACK)
 	# 走路路線
 	if u.player_id == main.view_pid and not u.path.is_empty():
 		var prev := p

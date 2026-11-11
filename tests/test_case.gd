@@ -68,6 +68,8 @@ func add_building(sim: MatchSim, pid: int, def_id: String, origin: Vector2i, lev
 		inst.total_paid_w += d.level(i)["cost_w"]
 	sim.buildings[inst.instance_id] = inst
 	sim.grid.occupy(origin, d.footprint, inst.instance_id)
+	if def_id == "elf_house":
+		sim.house.refresh_gate_hp(pid)
 	return inst
 
 
@@ -92,3 +94,17 @@ func ready_for_portal(sim: MatchSim, pid: int, house_origin: Vector2i, hall_orig
 	add_building(sim, pid, "craft_hall", hall_origin, 2)
 	set_res(sim, pid, 20000, 5000)
 	sim.tick = sim.escape.unlock_tick()
+
+
+## 玩家蓋的建築（不含地圖自動生成的樹樁門）。
+func player_buildings(sim: MatchSim) -> Array:
+	var out := []
+	for b in sim.buildings.values():
+		if (b as BuildingInstance).def_id != "stump_gate":
+			out.append(b)
+	return out
+
+
+## 讓精靈 pid 有一座完成的樹屋並直接入屋。
+func put_inside(sim: MatchSim, pid: int, house: BuildingInstance) -> void:
+	sim.house.do_enter(sim.unit_of(pid), house)

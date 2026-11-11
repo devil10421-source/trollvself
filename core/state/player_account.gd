@@ -11,7 +11,8 @@ var alive_original := false         # 是否為「存活的原始精靈」
 var afterlife := ""                 # 精靈死後："" / "pending" / "soul" / "minion"
 var unit_id := -1                   # 目前操控的單位
 var job_instance_id := -1           # 個人施工動作（同時只有一項）
-var authorize_soul_repair := false  # 允許靈魂修復使用我的資源
+var house_repair_until := -1        # 樹屋修復鈕：本次修復持續到哪個 tick
+var house_repair_ready := 0         # 樹屋修復鈕：冷卻結束 tick
 var troll_gold := 0                 # 巨魔方戰鬥收益（裝備系統另訂）
 
 

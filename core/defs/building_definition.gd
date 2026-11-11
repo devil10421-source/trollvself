@@ -8,6 +8,7 @@ var category := ""
 var footprint := Vector2i.ONE
 var max_per_player := 0          # 0 = 不以個人計
 var max_per_team := 0            # 0 = 不以隊伍計
+var buildable := true
 var targetable_by_enemies := true
 var damageable := true
 var color := Color.WHITE
@@ -17,6 +18,10 @@ var levels: Array[Dictionary] = []
 var stages: Array[Dictionary] = []
 ## 傳送門專用的發起前置
 var requires: Array = []
+
+
+func is_gate() -> bool:
+	return category == "gate"
 
 
 func is_portal() -> bool:

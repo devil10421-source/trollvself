@@ -41,6 +41,30 @@ var slows := {}
 # 靈魂
 var energy := 0.0
 var energy_max := 0.0
+var soul_points := 0
+var soul_point_tick := 0
+var soul_skills := {"repair": 1, "mark": 1, "root": 1}
+
+# 精靈：在樹屋內（-1 = 不在）、暈眩
+var inside_house := -1
+var stunned_until := -1
+var build_block_until := -1               # 被威嚇怒吼暫停施工
+
+# 巨魔方：等級與經驗、回血、技能
+var level := 1
+var xp := 0
+var last_damaged_tick := -100000
+var regen_carry := 0.0
+var skill_ready := {}                     # skill -> 可再用的 tick
+var channel_kind := ""                    # 正在引導的技能（recall）
+var channel_until := -1
+var smash_ready := false
+var rampage_until := -1
+var rooted_until := -1
+var root_immune_until := -1
+var marked_until := -1
+var marked_bonus := 0
+var ai_mode := ""                         # "" / "retreat"
 
 
 func cell() -> Vector2i:
@@ -49,6 +73,15 @@ func cell() -> Vector2i:
 
 func is_original_elf() -> bool:
 	return kind == KIND_ELF
+
+
+## 地圖上看得到、能被選為目標、會擋路判定的狀態。
+func on_map() -> bool:
+	return alive and spawned and inside_house == -1
+
+
+func can_move(now_tick: int) -> bool:
+	return on_map() and stunned_until <= now_tick and rooted_until <= now_tick and channel_until <= now_tick
 
 
 func strongest_slow(now_tick: int) -> int:
@@ -63,4 +96,6 @@ func strongest_slow(now_tick: int) -> int:
 
 
 func current_speed(now_tick: int) -> float:
+	if not can_move(now_tick):
+		return 0.0
 	return base_speed * (100 - strongest_slow(now_tick)) / 100.0

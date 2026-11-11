@@ -14,7 +14,12 @@ const REASONS := {
 	"zone_not_sealed": "保護區入口尚未用城牆封住", "outside_portal_zone": "只能建在藍色保護區內",
 	"portal_exists": "全隊只能有一座傳送門", "initiator_cannot_reach": "你走不到傳送門旁",
 	"not_waiting_for_payment": "目前不需要付款", "target_not_attackable": "這個目標不能被攻擊",
-	"no_authorized_payer": "沒有存活精靈授權付費", "not_repairable": "不需要或不能修繕",
+	"not_repairable": "不需要或不能修繕", "walls_use_house_button": "城牆請用樹屋的修復鈕",
+	"gate_cell": "樹樁門的位置不能建造", "not_buildable": "不能建造", "not_demolishable": "不能拆除",
+	"no_house": "需要一座完工的樹屋", "already_inside": "已經在屋內", "not_inside": "不在屋內",
+	"cooldown": "冷卻中", "skill_locked": "尚未解鎖", "channeling": "正在引導", "stunned": "暈眩中",
+	"already_in_nest": "已在巢穴", "unknown_skill": "沒有這個技能", "not_a_soul": "需要操控靈魂",
+	"no_soul_points": "沒有技能點", "no_target_in_range": "範圍內沒有巨魔", "target_root_immune": "目標暫時免疫定身",
 	"cancel_job_first": "請先取消施工", "nothing_to_cancel": "沒有進行中的施工", "no_pending_choice": "沒有待選擇",
 	"invalid_destination": "不能走到那裡", "no_unit": "沒有可操控的單位", "both_must_be_living_elves": "雙方都要是存活精靈",
 	"not_a_troll_unit": "需要操控巨魔方單位", "no_job_here": "這裡沒有你的工地", "payer_dead": "付款人已死亡",
@@ -308,6 +313,16 @@ func _section(parent: Node, title: String) -> VBoxContainer:
 	return box
 
 
+const TROLL_SKILL_NAMES := {"recall": "回巢", "smash": "重擊", "roar": "威嚇怒吼", "rampage": "狂暴"}
+
+
+func _ring(parent: Node) -> Control:
+	var r := Control.new()
+	r.set_script(load("res://game/cooldown_ring.gd"))
+	parent.add_child(r)
+	return r
+
+
 func _panel_style() -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0.11, 0.12, 0.14, 0.96)
@@ -375,7 +390,7 @@ func _build_hud() -> void:
 	sb.add_child(grid)
 	ui["build_btns"] = {}
 	for id in defs.building_order:
-		if id == "escape_portal":
+		if id == "escape_portal" or not defs.get_def(id).buildable:
 			continue
 		var b := _btn("", _enter_build.bind(id), grid)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -428,12 +443,42 @@ func _build_hud() -> void:
 		_btn("+100金", _donate.bind(pid, 100, 0), row)
 		_btn("+30木", _donate.bind(pid, 0, 30), row)
 		ui["donate"][pid] = row
-	var auth := CheckButton.new()
-	auth.text = "允許靈魂修復花我的錢"
-	auth.focus_mode = Control.FOCUS_NONE
-	auth.toggled.connect(func(on): _submit({"type": "set_soul_authorization", "enabled": on}))
-	ts.add_child(auth)
-	ui["auth"] = auth
+
+	# 我的樹屋（入屋、修復鈕）
+	var hs := _section(col, "我的樹屋")
+	ui["house_sec"] = hs
+	ui["house_info"] = _label(hs, 14)
+	var hrow := HBoxContainer.new()
+	hs.add_child(hrow)
+	ui["b_enter"] = _btn("進屋關門", func(): _submit({"type": "enter_house"}), hrow)
+	ui["b_exit"] = _btn("出屋", func(): _submit({"type": "exit_house"}), hrow)
+	ui["b_hrepair"] = _btn("修復城牆", func(): _submit({"type": "house_repair"}), hrow)
+	ui["b_hrepair"].size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ui["ring_hrepair"] = _ring(hrow)
+
+	# 靈魂技能
+	var ss := _section(col, "靈魂技能")
+	ui["soul_sec"] = ss
+	ui["soul_info"] = _label(ss, 14)
+	var sgrid := GridContainer.new()
+	sgrid.columns = 3
+	ss.add_child(sgrid)
+	ui["b_mark"] = _btn("星光印記", func(): _submit({"type": "soul_skill", "skill": "mark"}), sgrid)
+	ui["ring_mark"] = _ring(sgrid)
+	ui["b_up_mark"] = _btn("升級", func(): _submit({"type": "soul_upgrade", "skill": "mark"}), sgrid)
+	ui["b_root"] = _btn("藤蔓纏繞", func(): _submit({"type": "soul_skill", "skill": "root"}), sgrid)
+	ui["ring_root"] = _ring(sgrid)
+	ui["b_up_root"] = _btn("升級", func(): _submit({"type": "soul_upgrade", "skill": "root"}), sgrid)
+	ui["b_repinfo"] = _btn("修復之光：點建築按修繕", func(): pass, sgrid)
+	ui["b_repinfo"].disabled = true
+	_label(sgrid, 12)
+	ui["b_up_repair"] = _btn("升級", func(): _submit({"type": "soul_upgrade", "skill": "repair"}), sgrid)
+	for k in ["b_mark", "b_root", "b_repinfo"]:
+		ui[k].size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		ui[k].add_theme_font_size_override("font_size", 13)
+	# 手機上最常按的放最上面
+	col.move_child(hs, 0)
+	col.move_child(ss, 1)
 
 	# 巨魔
 	var trs := _section(col, "巨魔")
@@ -445,6 +490,15 @@ func _build_hud() -> void:
 	ai.toggled.connect(func(on): _submit({"type": "set_troll_ai", "enabled": on}))
 	trs.add_child(ai)
 	ui["ai"] = ai
+	var tgrid := GridContainer.new()
+	tgrid.columns = 4
+	trs.add_child(tgrid)
+	ui["troll_skill_btns"] = {}
+	for sk in TrollService.SKILLS:
+		var b := _btn(TROLL_SKILL_NAMES[sk], func(): _submit({"type": "troll_skill", "skill": sk}), tgrid)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.add_theme_font_size_override("font_size", 13)
+		ui["troll_skill_btns"][sk] = {"btn": b, "ring": _ring(tgrid)}
 
 	# 測試工具
 	var dbg := _section(col, "測試工具")
@@ -483,7 +537,7 @@ func _build_hud() -> void:
 	dp.add_child(dv)
 	var dl := _label(dv, 20)
 	dl.text = "你被擊殺了。選擇繼續參戰的陣營："
-	_btn("精靈方靈魂（修復／協助攻擊／控制）", func(): _submit({"type": "death_choice", "choice": "soul"}), dv)
+	_btn("精靈方靈魂（修復之光／星光印記／藤蔓纏繞）", func(): _submit({"type": "death_choice", "choice": "soul"}), dv)
 	_btn("巨魔方僕從（較弱，可攻擊建築）", func(): _submit({"type": "death_choice", "choice": "minion"}), dv)
 	ui["death_panel"] = dp
 
@@ -647,21 +701,28 @@ func _refresh_hud() -> void:
 	for pid in [1, 2, 3]:
 		var pp: PlayerAccount = sim.players[pid]
 		var state: String = "存活" if pp.alive_original else {"pending": "陣亡", "soul": "靈魂", "minion": "僕從"}.get(pp.afterlife, "")
-		lines.append("精靈%d：%s  金%d 木%d%s" % [pid, state, pp.gold, pp.wood, "  ✓授權靈魂" if pp.authorize_soul_repair else ""])
-	var soul_u: UnitState = sim.unit_of(view_pid)
-	if p.afterlife == "soul" and soul_u:
-		lines.append("靈魂能量 %d / %d" % [int(soul_u.energy), int(soul_u.energy_max)])
+		if sim.house.is_inside(pid):
+			state += "（屋內）"
+		lines.append("精靈%d：%s  金%d 木%d" % [pid, state, pp.gold, pp.wood])
 	ui["team_info"].text = "\n".join(lines)
 	for pid in ui["donate"]:
 		ui["donate"][pid].visible = is_elf_alive and pid != view_pid and sim.players[pid].alive_original
-	ui["auth"].visible = is_elf_alive
-	ui["auth"].set_pressed_no_signal(p.authorize_soul_repair)
+	_refresh_house(p)
+	_refresh_soul(p)
 
 	# 巨魔
 	ui["troll_sec"].visible = team == "trolls"
 	var tu: UnitState = sim.unit_of(view_pid)
 	if team == "trolls" and tu:
-		var t := "HP %d / %d" % [tu.hp, tu.max_hp] if tu.alive else "等待重生"
+		var t := "Lv%d  HP %d / %d" % [tu.level, tu.hp, tu.max_hp] if tu.alive else "等待重生"
+		var main_t := sim.troll.main_troll()
+		if main_t:
+			var need := sim.troll.xp_to_next(main_t)
+			t += "\n經驗 %s" % (("%d / %d" % [main_t.xp, need]) if need > 0 else "已滿級")
+		if tu.channel_kind == "recall":
+			t += "\n回巢中… %.1f 秒" % (float(tu.channel_until - sim.tick) / sim.tick_rate)
+		if sim.troll.in_nest(tu):
+			t += "\n在巢穴：快速回血"
 		if not tu.spawned:
 			t = "%d 秒後出場" % ceili(float(sim.troll_spawn_tick - sim.tick) / sim.tick_rate)
 		if sim.escape.trolls_alerted:
@@ -671,6 +732,73 @@ func _refresh_hud() -> void:
 		t += "\n點精靈＝攻擊；點建築＝攻擊；點空地＝移動"
 		ui["troll_info"].text = t
 		ui["ai"].set_pressed_no_signal(tu.ai_enabled)
+		for sk in ui["troll_skill_btns"]:
+			var e: Dictionary = ui["troll_skill_btns"][sk]
+			var b: Button = e["btn"]
+			var has := sim.troll.skill_list(tu).has(sk)
+			b.visible = has
+			e["ring"].visible = has
+			if not has:
+				continue
+			var why := sim.troll.can_cast(tu, sk)
+			var left := sim.troll.cooldown_left_sec(tu, sk)
+			var label: String = TROLL_SKILL_NAMES[sk]
+			if why == "skill_locked":
+				label += "\nLv%d 解鎖" % sim.troll.unlock_level(sk)
+			elif left > 0:
+				label += "\n%.0f 秒" % ceilf(left)
+			b.text = label
+			b.disabled = why != "" and why != "already_in_nest"
+			var total := float(sim.cfg["troll"]["skills"][sk]["cooldown_sec"])
+			if why == "skill_locked":
+				left = total
+			e["ring"].set_state(left / total, (sk == "rampage" and sim.tick < tu.rampage_until) or (sk == "smash" and tu.smash_ready) or (sk == "recall" and tu.channel_kind == "recall"))
+
+
+func _refresh_house(p: PlayerAccount) -> void:
+	var show := p.alive_original
+	ui["house_sec"].visible = show
+	if not show:
+		return
+	var h := sim.house.house_of(view_pid)
+	var inside := sim.house.is_inside(view_pid)
+	var g := sim.house.gate_of(view_pid)
+	var lines: Array[String] = []
+	if h == null or not h.is_functional():
+		lines.append("還沒有完工的樹屋：蓋好才能進屋與修牆")
+	else:
+		var prm := sim.house.repair_params(h.level)
+		lines.append("樹屋 Lv%d %s" % [h.level, "· 你在屋內（門已關、金幣 +50%）" if inside else ""])
+		lines.append("修復鈕：3 秒 × %d HP/秒，冷卻 %d 秒（免費）" % [int(prm["hp_per_sec"]), int(prm["cooldown_sec"])])
+	if g:
+		var gs: String = {BuildingInstance.ST_GATE_OPEN: "開", BuildingInstance.ST_GATE_CLOSED: "關", BuildingInstance.ST_GATE_BROKEN: "破"}.get(g.state, "")
+		lines.append("樹樁門：%s  HP %d / %d" % [gs, g.hp, g.max_hp])
+	ui["house_info"].text = "\n".join(lines)
+	var has_house := h != null and h.is_functional()
+	ui["b_enter"].visible = has_house and not inside
+	ui["b_exit"].visible = inside
+	ui["b_hrepair"].disabled = not has_house
+	var left := sim.house.repair_cooldown_left_sec(view_pid)
+	ui["b_hrepair"].text = "修復城牆" if left <= 0 else "修復城牆 %.0f 秒" % ceilf(left)
+	ui["ring_hrepair"].set_state(left / maxf(1.0, sim.house.repair_cooldown_total_sec(view_pid)), sim.house.repair_active(view_pid))
+
+
+func _refresh_soul(p: PlayerAccount) -> void:
+	var u: UnitState = sim.unit_of(view_pid)
+	var show := p.afterlife == "soul" and u != null and u.alive
+	ui["soul_sec"].visible = show
+	if not show:
+		return
+	var sk := u.soul_skills
+	var max_lv := int(sim.cfg["soul"]["max_skill_level"])
+	ui["soul_info"].text = "能量 %d / %d   技能點 %d（每 90 秒 +1）\n修復之光 Lv%d · 星光印記 Lv%d · 藤蔓纏繞 Lv%d" % [int(u.energy), int(u.energy_max), u.soul_points, sk["repair"], sk["mark"], sk["root"]]
+	for s in ["mark", "root"]:
+		var left := sim.soul.cooldown_left_sec(u, s)
+		var name: String = "星光印記" if s == "mark" else "藤蔓纏繞"
+		ui["b_" + s].text = name if left <= 0 else "%s %.0f 秒" % [name, ceilf(left)]
+		ui["ring_" + s].set_state(left / float(sim.cfg["soul"]["skills"][s]["cooldown_sec"]), false)
+	for s in ["mark", "root", "repair"]:
+		ui["b_up_" + s].disabled = u.soul_points <= 0 or int(sk[s]) >= max_lv
 
 
 func _update_preview_silent() -> void:
@@ -688,6 +816,10 @@ func _refresh_selection(inst: BuildingInstance, p: PlayerAccount) -> void:
 	var mine := inst.owner_player_id == view_pid and p.alive_original
 	if d.is_portal():
 		lines.append("團隊勝利建築，不可被攻擊、沒有 HP")
+	elif d.is_gate():
+		var gs: String = {BuildingInstance.ST_GATE_OPEN: "開著", BuildingInstance.ST_GATE_CLOSED: "關著", BuildingInstance.ST_GATE_BROKEN: "已被打破（修滿前保持開啟）"}.get(inst.state, "")
+		lines.append("%s   HP %d / %d" % [gs, inst.hp, inst.max_hp])
+		lines.append("主人進樹屋就關門；用樹屋修復鈕修")
 	else:
 		var lv_name: String = d.level(inst.level)["name"] if inst.level > 0 else "施工中"
 		lines.append("等級 %d %s   HP %d / %d" % [inst.level, lv_name, inst.hp, inst.max_hp])
@@ -698,7 +830,7 @@ func _refresh_selection(inst: BuildingInstance, p: PlayerAccount) -> void:
 				float(inst.remaining_job_ticks()) / sim.tick_rate, "" if present else "  ⏸ 建造者不在旁邊"])
 		if inst.level > 0:
 			var lv := d.level(inst.level)
-			if lv["gold_per_sec"] > 0: lines.append("產量 %d 金/秒" % lv["gold_per_sec"])
+			if lv["gold_per_sec"] > 0: lines.append("產量 %d 金/秒（屋內 %d）" % [lv["gold_per_sec"], lv["gold_per_sec"] * (100 + int(sim.cfg["house"]["inside_gold_bonus_percent"])) / 100])
 			if lv["wood_per_sec"] > 0: lines.append("產量 %d 木/秒" % lv["wood_per_sec"])
 			if not lv["attack"].is_empty(): lines.append("傷害 %d／%.1f 秒，射程 %d" % [lv["attack"]["damage"], lv["attack"]["interval_ticks"] / 10.0, int(lv["attack"]["range"])])
 			if not lv["slow"].is_empty(): lines.append("緩速 %d%%，射程 %d" % [lv["slow"]["percent"], int(lv["slow"]["range"])])
@@ -717,13 +849,9 @@ func _refresh_selection(inst: BuildingInstance, p: PlayerAccount) -> void:
 		var refund: Array = sim.building_svc.refund_for_cancel(inst, int(sim.cfg["construction"]["cancel_refund_percent"]))
 		ui["b_cancel"].text = "取消（退 %dG/%dW）" % [refund[0], refund[1]]
 	var u: UnitState = sim.unit_of(view_pid)
-	var can_repair_unit := u != null and u.alive and (u.kind == UnitState.KIND_ELF or u.kind == UnitState.KIND_SOUL)
-	ui["b_repair"].visible = can_repair_unit and sim.repair.can_be_repaired(inst)
-	if ui["b_repair"].visible:
-		var full_g := inst.total_paid_g * int(sim.cfg["repair"]["cost_ratio_percent"]) * (inst.max_hp - inst.hp) / (100 * inst.max_hp)
-		var full_w := inst.total_paid_w * int(sim.cfg["repair"]["cost_ratio_percent"]) * (inst.max_hp - inst.hp) / (100 * inst.max_hp)
-		ui["b_repair"].text = "修繕（修滿約 %dG/%dW）" % [full_g, full_w]
-	ui["b_demolish"].visible = mine and inst.state == BuildingInstance.ST_ACTIVE and not d.is_portal()
+	ui["b_repair"].visible = u != null and u.alive and sim.repair.can_unit_repair(u, inst) if u and u.inside_house == -1 else (u != null and u.kind == UnitState.KIND_ELF and inst.is_functional() and inst.hp < inst.max_hp and not RepairService.is_wall_like(inst.def_id))
+	ui["b_repair"].text = "修繕（免費）"
+	ui["b_demolish"].visible = mine and inst.state == BuildingInstance.ST_ACTIVE and not d.is_portal() and d.buildable
 	ui["b_attack"].visible = p.team() == "trolls" and sim.combat.is_attackable_building(inst)
 
 

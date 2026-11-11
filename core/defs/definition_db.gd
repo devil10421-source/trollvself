@@ -81,6 +81,7 @@ func _parse_buildings(root: Dictionary) -> void:
 			errors.append("%s 占地不合法" % d.id)
 		d.max_per_player = int(raw.get("max_per_player", 0))
 		d.max_per_team = int(raw.get("max_per_team", 0))
+		d.buildable = bool(raw.get("buildable", true))
 		d.targetable_by_enemies = bool(raw.get("targetable_by_enemies", true))
 		d.damageable = bool(raw.get("damageable", true))
 		d.color = Color.from_string(str(raw.get("color", "#ffffff")), Color.WHITE)
@@ -184,6 +185,22 @@ func _validate_config() -> void:
 	for key in ["tick_rate", "match_time_limit_sec", "portal_unlock_time_sec", "start_gold", "start_wood", "map"]:
 		if not config.has(key):
 			errors.append("match_config.json 缺少 %s" % key)
-	for key in ["construction", "repair", "portal", "elf", "troll", "minion", "soul"]:
+	for key in ["construction", "repair", "portal", "elf", "troll", "minion", "soul", "house", "gate"]:
 		if not config.get(key) is Dictionary:
 			errors.append("match_config.json 缺少區塊 %s" % key)
+	if not errors.is_empty():
+		return
+	var lv: Array = config["troll"].get("levels", [])
+	if lv.is_empty():
+		errors.append("troll.levels 不可為空")
+	for i in lv.size():
+		if int(lv[i].get("hp", 0)) <= 0 or int(lv[i].get("damage", -1)) < 0:
+			errors.append("troll.levels 第 %d 級 hp/damage 不合法" % (i + 1))
+		if i < lv.size() - 1 and int(lv[i].get("xp", 0)) <= 0:
+			errors.append("troll.levels 第 %d 級升級經驗必須大於 0" % (i + 1))
+	var hb: Array = config["house"].get("repair_button", {}).get("levels", [])
+	var house := get_def("elf_house")
+	if house and hb.size() != house.max_level():
+		errors.append("house.repair_button.levels 數量必須等於樹屋等級數 %d" % house.max_level())
+	if house and config["gate"].get("hp_by_house_level", []).size() != house.max_level() + 1:
+		errors.append("gate.hp_by_house_level 需要 %d 個值（無樹屋 + 每級）" % (house.max_level() + 1))

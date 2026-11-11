@@ -35,8 +35,10 @@ func spawn_unit(kind: String, pid: int, cell: Vector2i) -> UnitState:
 			u.energy = u.energy_max
 		UnitState.KIND_TROLL, UnitState.KIND_MINION:
 			u.team = "trolls"
-			u.max_hp = int(c["hp"])
-			u.damage = int(c["damage"])
+			u.level = 1 if kind == UnitState.KIND_TROLL else sim.troll.minion_level()
+			u.alive = false  # apply_stats 在未存活時直接給滿血
+			sim.troll.apply_stats(u)
+			u.alive = true
 			u.attack_interval_ticks = maxi(1, sim.defs.sec_to_ticks(float(c["attack_interval"])))
 			u.attack_range = float(c.get("attack_range", 1.5))
 			u.reward_per_hp = float(c.get("reward_gold_per_effective_hp", 0.0))
@@ -46,6 +48,8 @@ func spawn_unit(kind: String, pid: int, cell: Vector2i) -> UnitState:
 
 
 func set_order(u: UnitState, order: Dictionary) -> void:
+	if u.inside_house != -1 and ["move", "build", "repair", "portal_work"].has(str(order.get("type", ""))):
+		sim.house.exit_house(u.player_id)
 	u.order = order
 	u.path = []
 	u.repath_cooldown = 0
@@ -65,10 +69,13 @@ func kill_unit(u: UnitState) -> void:
 		sim.events.emit_event("elf_died", {"player_id": p.id, "unit_id": u.id})
 	else:
 		sim.events.emit_event("unit_died", {"unit_id": u.id, "kind": u.kind})
-		var key := "respawn_sec"
-		var sec := float(sim.cfg[u.kind].get(key, -1))
-		if sec >= 0:
-			_respawn_at[u.id] = sim.tick + sim.defs.sec_to_ticks(sec)
+		if u.team == "trolls":
+			u.channel_kind = ""
+			u.channel_until = -1
+			u.rampage_until = -1
+			u.smash_ready = false
+			u.ai_mode = ""
+			_respawn_at[u.id] = sim.tick + sim.troll.respawn_ticks(u)
 
 
 ## 精靈死亡後選擇陣營：soul（精靈方靈魂）或 minion（巨魔方僕從）。
@@ -125,7 +132,7 @@ func command_attack(pid: int, target_kind: String, target_id: int) -> Dictionary
 			return {"ok": false, "reason": "target_not_attackable"}
 	elif target_kind == "unit":
 		var t: UnitState = sim.units.get(target_id)
-		if t == null or not t.alive or t.team == u.team or t.kind == UnitState.KIND_SOUL:
+		if t == null or not t.on_map() or t.team == u.team or t.kind == UnitState.KIND_SOUL:
 			return {"ok": false, "reason": "target_not_attackable"}
 	else:
 		return {"ok": false, "reason": "invalid_target"}
@@ -166,18 +173,22 @@ func tick_units() -> void:
 				_respawn_at.erase(uid)
 				u.alive = true
 				u.hp = u.max_hp
+				u.last_damaged_tick = -100000
 				u.pos = GridMath.cell_center(sim.grid.troll_spawn_cells[0])
 				set_order(u, {"type": "idle"})
 				sim.events.emit_event("unit_respawned", {"unit_id": uid})
 			continue
-		if not u.spawned:
+		if not u.spawned or u.inside_house != -1:
 			continue
 		if u.kind == UnitState.KIND_SOUL:
 			u.energy = minf(u.energy_max, u.energy + float(sim.cfg["soul"]["energy_regen_per_sec"]) / sim.tick_rate)
 		if u.attack_cooldown > 0:
 			u.attack_cooldown -= 1
 		if u.ai_enabled and u.team == "trolls" and (sim.tick + uid) % sim.tick_rate == 0:
-			_ai_think(u)
+			if not sim.troll.ai_tactics(u):
+				_ai_think(u)
+		if u.channel_kind != "" or sim.tick < u.stunned_until:
+			continue  # 引導回巢中 / 暈眩：不動作
 		_execute(u)
 
 
@@ -205,6 +216,16 @@ func _execute(u: UnitState) -> void:
 				set_order(u, {"type": "idle"})
 				return
 			_approach_rect(u, p.origin, p.size, sim.escape.build_range())
+		"enter_house":
+			var h: BuildingInstance = sim.buildings.get(o["instance_id"])
+			if h == null or not h.is_functional():
+				set_order(u, {"type": "idle"})
+				return
+			var er: int = sim.house.enter_range()
+			if GridMath.cheb_cell_to_rect(u.cell(), h.origin, h.size) <= er:
+				sim.house.do_enter(u, h)
+				return
+			_go(u, func(c): return GridMath.cheb_cell_to_rect(c, h.origin, h.size) <= er)
 		"attack":
 			_execute_attack(u)
 
@@ -280,7 +301,7 @@ func _execute_attack(u: UnitState) -> void:
 			return
 	else:
 		var t: UnitState = sim.units.get(o["target_id"])
-		if t == null or not t.alive or not t.spawned:
+		if t == null or not t.on_map():
 			set_order(u, {"type": "idle"})
 			return
 		target_pos = t.pos
@@ -296,9 +317,9 @@ func _strike(u: UnitState, inst: BuildingInstance, t: UnitState) -> void:
 	u.path = []
 	if u.attack_cooldown > 0:
 		return
-	u.attack_cooldown = u.attack_interval_ticks
+	u.attack_cooldown = sim.troll.attack_interval(u)
 	if inst:
-		sim.combat.damage_building(u, inst, u.damage)
+		sim.combat.damage_building(u, inst, sim.troll.consume_smash(u, u.damage, true))
 	else:
 		sim.combat.damage_unit(u, t, u.damage)
 
@@ -456,7 +477,7 @@ func _ai_think(u: UnitState) -> void:
 	var best := {}
 	for v in sim.units.values():
 		var t: UnitState = v
-		if not t.alive or not t.spawned or t.kind != UnitState.KIND_ELF:
+		if not t.on_map() or t.kind != UnitState.KIND_ELF:
 			continue
 		var d := dist[g.idx(t.cell())]
 		if d >= 0x3fffffff:

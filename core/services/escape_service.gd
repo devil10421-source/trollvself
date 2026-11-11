@@ -183,7 +183,7 @@ func count_builders() -> int:
 	var n := 0
 	for u in sim.units.values():
 		var unit: UnitState = u
-		if unit.alive and unit.kind == UnitState.KIND_ELF and sim.players[unit.player_id].alive_original:
+		if unit.on_map() and unit.kind == UnitState.KIND_ELF and sim.players[unit.player_id].alive_original:
 			if GridMath.cheb_cell_to_rect(unit.cell(), inst.origin, inst.size) <= build_range():
 				n += 1
 	return n

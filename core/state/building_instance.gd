@@ -6,6 +6,9 @@ const ST_CONSTRUCTING := "constructing"   # 首次施工中（level = 0，無功
 const ST_ACTIVE := "active"
 const ST_UPGRADING := "upgrading"         # 依舊等級（level）持續運作
 const ST_DESTROYED := "destroyed"
+const ST_GATE_OPEN := "gate_open"         # 樹樁門：開著（不占格）
+const ST_GATE_CLOSED := "gate_closed"     # 樹樁門：關著（占格、可被攻擊）
+const ST_GATE_BROKEN := "gate_broken"     # 樹樁門：被打破，修滿前保持開啟
 
 var instance_id := 0
 var def_id := ""
@@ -31,8 +34,11 @@ var construction_start_hp := 0
 var total_paid_g := 0
 var total_paid_w := 0
 
-# 修繕預付餘額：payer_id -> {"g": 分子, "w": 分子}（單位 1/(100*max_hp) 枚）
-var repair_credit := {}
+# 修復：小數暫存（千分之一 HP）、威嚇怒吼造成的暫停與減速
+var repair_carry_milli := 0
+var repair_block_until := -1
+var repair_slow_until := -1
+var repair_slow_percent := 0
 
 # 塔
 var attack_cooldown := 0

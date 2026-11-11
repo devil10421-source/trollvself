@@ -62,6 +62,8 @@ func produce_per_second() -> void:
 			continue
 		var lv: Dictionary = sim.defs.get_def(inst.def_id).level(inst.level)
 		var g := int(lv.get("gold_per_sec", 0))
+		if inst.def_id == "elf_house":
+			g = sim.house.gold_with_bonus(inst.owner_player_id, inst, g)
 		var w := int(lv.get("wood_per_sec", 0))
 		if g == 0 and w == 0:
 			continue
