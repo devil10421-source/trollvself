@@ -64,9 +64,9 @@
       "max_per_player": 6,
       "color": "#c45a3c",
       "levels": [
-        { "level": 1, "name": "箭塔 Lv1", "cost": { "G": 180,  "W": 60  }, "time": 15, "hp": 600,  "attack": { "damage": 15, "interval": 1.5, "range": 5 }, "requires": [ { "building": "craft_hall", "level": 1 } ] },
-        { "level": 2, "name": "箭塔 Lv2", "cost": { "G": 480,  "W": 130 }, "time": 30, "hp": 950,  "attack": { "damage": 36, "interval": 1.5, "range": 6 }, "requires": [ { "building": "craft_hall", "level": 2 } ] },
-        { "level": 3, "name": "箭塔 Lv3", "cost": { "G": 1150, "W": 300 }, "time": 45, "hp": 1500, "attack": { "damage": 75, "interval": 1.5, "range": 7 }, "requires": [ { "building": "craft_hall", "level": 3 } ] }
+        { "level": 1, "name": "箭塔 Lv1", "cost": { "G": 180,  "W": 60  }, "time": 15, "hp": 600,  "attack": { "damage": 20, "interval": 1.5, "range": 5 }, "requires": [ { "building": "craft_hall", "level": 1 } ] },
+        { "level": 2, "name": "箭塔 Lv2", "cost": { "G": 480,  "W": 130 }, "time": 30, "hp": 950,  "attack": { "damage": 45, "interval": 1.5, "range": 6 }, "requires": [ { "building": "craft_hall", "level": 2 } ] },
+        { "level": 3, "name": "箭塔 Lv3", "cost": { "G": 1150, "W": 300 }, "time": 45, "hp": 1500, "attack": { "damage": 90, "interval": 1.5, "range": 7 }, "requires": [ { "building": "craft_hall", "level": 3 } ] }
       ]
     },
     {

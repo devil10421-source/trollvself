@@ -268,6 +268,8 @@ func assign_job(pid: int, iid: int) -> Dictionary:
 	p.job_instance_id = iid
 	var u := builder_unit(pid)
 	if u and u.inside_house != -1:
+		if sim.house.can_build_remotely(pid, inst):
+			return {"ok": true, "remote": true}  # 留在屋內，由樹屋遠端施工
 		sim.house.exit_house(pid)
 	if u:
 		sim.unit_svc.set_order(u, {"type": "build", "instance_id": iid})
@@ -279,9 +281,11 @@ func is_builder_present(inst: BuildingInstance) -> bool:
 	if p == null or not p.alive_original or p.job_instance_id != inst.instance_id:
 		return false
 	var u := builder_unit(p.id)
-	if u == null or not u.on_map() or u.order.get("type") != "build" or u.order.get("instance_id") != inst.instance_id:
+	if u == null or not u.alive or sim.tick < u.build_block_until:
 		return false
-	if sim.tick < u.build_block_until:
+	if u.inside_house != -1:
+		return sim.house.can_build_remotely(p.id, inst)
+	if u.order.get("type") != "build" or u.order.get("instance_id") != inst.instance_id:
 		return false
 	return GridMath.cheb_cell_to_rect(u.cell(), inst.origin, inst.size) <= builder_range()
 

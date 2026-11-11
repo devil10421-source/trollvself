@@ -238,7 +238,7 @@ func _roar(u: UnitState, sk: Dictionary) -> void:
 	var slow := sim.defs.sec_to_ticks(float(sk["repair_slow_sec"]))
 	for v in sim.units.values():
 		var e: UnitState = v
-		if e.team == "elves" and e.on_map() and e.pos.distance_to(u.pos) <= r:
+		if e.team == "elves" and e.alive and e.pos.distance_to(u.pos) <= r:  # 屋內精靈以樹屋位置計
 			e.build_block_until = sim.tick + pause
 	for b in sim.buildings.values():
 		var inst: BuildingInstance = b
@@ -272,7 +272,9 @@ func ai_tactics(u: UnitState) -> bool:
 				sim.unit_svc.set_order(u, {"type": "idle"})
 			return true
 		if u.channel_kind == "":
-			if can_cast(u, "recall") == "":
+			# 還在挨打時引導會被打斷：先走出射程，脫戰 2 秒後再回巢
+			var safe := sim.tick - u.last_damaged_tick > 2 * sim.tick_rate
+			if safe and can_cast(u, "recall") == "":
 				cast(u, "recall")
 			elif u.order.get("type") != "move":
 				sim.unit_svc.set_order(u, {"type": "move", "cell": nest_cell()})

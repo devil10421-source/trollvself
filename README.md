@@ -2,6 +2,20 @@
 
 Godot 4.4 單機權威原型。純邏輯（`core/`）與畫面（`game/`）分開，日後把 `core/` 搬到權威伺服器即可，畫面只送指令。
 
+## 試玩版
+
+開啟後先選模式：**扮演精靈**（另外兩名精靈與巨魔由電腦控制）、**扮演巨魔**（三名精靈由電腦控制）、**自由測試**（可切換所有角色，含測試工具）。
+
+- 網頁版（手機橫放用瀏覽器開）：`gh-pages` 分支就是匯出好的網頁版。到 GitHub 的 Settings → Pages，Source 選 `Deploy from a branch`、Branch 選 `gh-pages` 後，網址是 `https://devil10421-source.github.io/trollvself/`。
+- 重新匯出：安裝 Godot 4.4 的 Web 匯出樣板後執行
+  `godot --headless --path . --export-release "Web" build/web/index.html`，再把 `build/web/` 的內容放到 `gh-pages` 分支。
+- 美術是原創造型的 SVG（`art/sprites`，由 `tools/gen_art.py` 產生），中文字型是 Noto Sans TC 子集（`tools/build_font.py`）。
+
+**試玩版相對於設計文件的調整**（都在 `data/` 裡，可改回）
+- 在樹屋內也能建造／升級基地內（樹屋 11 格內）的建築：`house.build_from_inside`。原因：模擬顯示被圍攻的精靈如果不能蓋東西就只能等死。設成 `false` 就回到「屋內不能施工」。
+- 巨魔前期變弱、升級變慢（Lv1 1,200 HP／30 傷害；經驗 = 有效傷害 × 0.3；殺精靈 +800），樹樁門 HP 加倍（2,000／4,000／7,000／12,000），箭塔傷害 20／45／90。
+- 電腦精靈（`core/ai/elf_bot.gd`）對巨魔 AI 的模擬：精靈約 18 分鐘全滅、巨魔約 6:00 Lv4、12:00 Lv7。用 `tools/balance.gd` 可重跑。
+
 ## 怎麼跑
 
 1. 用 Godot 4.4（或更新的 4.x）開啟這個資料夾，按 ▶ 執行。
@@ -9,7 +23,7 @@ Godot 4.4 單機權威原型。純邏輯（`core/`）與畫面（`game/`）分�
    ```
    godot --headless --path . --script res://tests/run_tests.gd
    ```
-   目前 39 項全部通過：規格 V0.6 第 7 節的 10 項必測，加上角色設計 V0.7 的 16 項。
+   目前 41 項全部通過：規格 V0.6 第 7 節的 10 項必測，加上角色設計 V0.7 與試玩版的 18 項。
 3. 整局冒煙測試（巨魔 AI 跑一整局，看有沒有執行期錯誤）：`godot --headless --path . --script res://tools/smoke.gd`
 
 ## 操作（手機 / 滑鼠皆可）
@@ -58,9 +72,11 @@ core/grid      TileGrid（地形、占格、BFS）、GridMath（距離定義）
 core/services  Economy / Building / Combat / Repair / Visibility / Escape / Match / Unit
                House（樹屋、入屋、樹樁門、修復鈕）/ Troll（等級、回血、技能）/ Soul（靈魂技能）
 core/sim       MatchSim（10 tick/秒、submit 指令、request_id 去重）、EventBus
-game/          main.gd（觸控、HUD）、map_view.gd（色塊地圖）
+core/ai        ElfBot（試玩版的電腦精靈）
+game/          main.gd（模式、觸控、HUD）、map_view.gd（建築/單位/特效）、terrain_layer.gd、fog_layer.gd、cooldown_ring.gd
+art/           原創 SVG 美術與中文字型子集
 tests/         自動測試
-tools/         screenshot.gd（開發用截圖）、smoke.gd（整局冒煙測試）
+tools/         screenshot.gd、smoke.gd、balance.gd（電腦對戰時間軸）、gen_art.py、build_font.py
 ```
 
 每 tick 順序：巨魔出場 → 視野 → 樹樁門開關 → 單位移動與攻擊 → 巨魔回血與回巢 → 靈魂點數 → 建築施工 → 傳送門施工 → 修繕 → 樹屋修復鈕 → 塔攻擊 → 每秒產量 → 勝負判定（規格第 5 節順序）。

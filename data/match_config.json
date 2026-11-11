@@ -24,6 +24,9 @@
 
   "house": {
     "enter_range_cells": 2,
+    "_build_from_inside": "在屋內時可遠端建造/升級樹屋 remote_build_radius 格內的建築（設 false = 屋內不能施工）",
+    "build_from_inside": true,
+    "remote_build_radius": 11,
     "inside_gold_bonus_percent": 50,
     "eject_stun_sec": 1.0,
     "repair_button": {
@@ -40,7 +43,7 @@
 
   "gate": {
     "_note": "樹樁門：地圖 D 格。精靈進自己的樹屋就關門（擋巨魔與精靈），可被打破，打破後保持開啟直到修滿。",
-    "hp_by_house_level": [1000, 1000, 2000, 3500, 6000]
+    "hp_by_house_level": [2000, 2000, 4000, 7000, 12000]
   },
 
   "portal": {
@@ -69,21 +72,21 @@
     "spawn_delay_sec": 90,
     "respawn_base_sec": 15, "respawn_per_level_sec": 2,
     "reward_gold_per_effective_hp": 0.1,
-    "xp_per_effective_hp": 1, "xp_per_elf_kill": 1500,
+    "xp_per_effective_hp": 0.3, "xp_per_elf_kill": 800,
     "nest_regen_percent_per_sec": 8,
     "field_regen_percent_per_sec": 1, "field_regen_delay_sec": 6,
     "ai_retreat_hp_percent": 30, "ai_return_hp_percent": 95,
     "_levels": "xp = 升下一級所需經驗",
     "levels": [
-      { "xp": 600,  "hp": 2000,  "damage": 40 },
-      { "xp": 900,  "hp": 2400,  "damage": 50 },
-      { "xp": 1300, "hp": 2900,  "damage": 62 },
-      { "xp": 1800, "hp": 3500,  "damage": 76 },
-      { "xp": 2500, "hp": 4200,  "damage": 92 },
-      { "xp": 3400, "hp": 5000,  "damage": 110 },
-      { "xp": 4500, "hp": 6000,  "damage": 132 },
-      { "xp": 6000, "hp": 7200,  "damage": 158 },
-      { "xp": 8000, "hp": 8600,  "damage": 190 },
+      { "xp": 600,  "hp": 1200,  "damage": 30 },
+      { "xp": 900,  "hp": 1500,  "damage": 38 },
+      { "xp": 1300, "hp": 1900,  "damage": 48 },
+      { "xp": 1800, "hp": 2400,  "damage": 60 },
+      { "xp": 2500, "hp": 3000,  "damage": 76 },
+      { "xp": 3400, "hp": 3800,  "damage": 96 },
+      { "xp": 4500, "hp": 4800,  "damage": 120 },
+      { "xp": 6000, "hp": 6000,  "damage": 150 },
+      { "xp": 8000, "hp": 7800,  "damage": 185 },
       { "xp": 0,    "hp": 10000, "damage": 230 }
     ],
     "skills": {

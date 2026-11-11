@@ -28,6 +28,9 @@ const REASONS := {
 
 var defs: DefinitionDB
 var sim: MatchSim
+var bot: ElfBot
+var mode := "free"                 # "elf" 你當精靈 / "troll" 你當巨魔 / "free" 自由測試（可切換所有角色）
+var fx: Array = []                 # 畫面特效（map_view 讀取）
 var view_pid := 1
 var speed_idx := 0
 var paused := false
@@ -54,9 +57,13 @@ var _msg_timer := 0.0
 
 
 func _ready() -> void:
+	var f: Font = load("res://art/NotoSansTC-subset.otf")
+	if f:
+		ThemeDB.fallback_font = f
 	defs = DefinitionDB.load_default()
 	if not defs.is_valid():
 		push_error("數值表錯誤：" + str(defs.errors))
+	RenderingServer.set_default_clear_color(Color("#1b2a16"))
 	world = Node2D.new()
 	add_child(world)
 	map_view = Node2D.new()
@@ -67,18 +74,50 @@ func _ready() -> void:
 	world.add_child(camera)
 	camera.make_current()
 	_build_hud()
-	_new_match()
+	_build_menu()
+	_new_match("free")
+	_show_menu()
 
 
-func _new_match() -> void:
+func _new_match(new_mode: String = "") -> void:
+	if new_mode != "":
+		mode = new_mode
 	sim = MatchSim.create(defs, 3)
 	sim.events.event_emitted.connect(_on_event)
-	view_pid = 1
+	fx = []
+	acc = 0.0
+	speed_idx = 0
+	paused = false
 	build_def = ""
 	selected_bid = -1
+	bot = null
+	view_pid = 1
+	match mode:
+		"elf":
+			bot = ElfBot.new(sim, [2, 3])
+		"troll":
+			view_pid = MatchSim.TROLL_PLAYER_ID
+			bot = ElfBot.new(sim, [1, 2, 3])
+			sim.submit({"type": "set_troll_ai", "player_id": MatchSim.TROLL_PLAYER_ID, "enabled": false})
 	ui["result_panel"].visible = false
+	ui["menu"].visible = false
+	ui["switcher"].visible = mode == "free"
+	ui["dbg_sec"].visible = mode == "free"
+	ui["role"].visible = mode != "free"
+	ui["role"].text = "你是精靈 1（藍）" if mode == "elf" else "你是巨魔"
+	map_view.on_new_match()
 	_center_camera()
 	_refresh_hud()
+	if mode == "elf":
+		say("先蓋樹屋和林場，再進屋關門。巨魔 1:30 出場！")
+	elif mode == "troll":
+		say("巨魔 1:30 才能出巢。出巢後點樹樁門或建築攻擊，殘血按「回巢」。")
+
+
+func _show_menu() -> void:
+	paused = true
+	ui["result_panel"].visible = false
+	ui["menu"].visible = true
 
 
 func _process(delta: float) -> void:
@@ -87,6 +126,8 @@ func _process(delta: float) -> void:
 		var n := 0
 		while acc >= 1.0 and n < 60:
 			sim.step()
+			if bot:
+				bot.tick()
 			acc -= 1.0
 			n += 1
 	_refresh_timer -= delta
@@ -97,6 +138,8 @@ func _process(delta: float) -> void:
 		_msg_timer -= delta
 		if _msg_timer <= 0.0:
 			ui["msg"].text = ""
+	var vs := get_viewport().get_visible_rect().size
+	ui["rotate"].visible = vs.y > vs.x
 
 
 # ---------- 視角 / 小工具 ----------
@@ -119,6 +162,8 @@ func short_name(def_id: String) -> String:
 
 
 func reason_text(r: Dictionary) -> String:
+	if r.get("reason", "") == "builder_cannot_reach" and sim.house.is_inside(view_pid):
+		return "在屋內只能蓋基地裡的建築，要蓋外面請先按「出屋」"
 	var t: String = REASONS.get(str(r.get("reason", "")), str(r.get("reason", "")))
 	if r.has("detail"):
 		t += "：" + str(r["detail"])
@@ -263,9 +308,60 @@ func _confirm_build() -> void:
 	_refresh_hud()
 
 
+func _fx(kind: String, a: Vector2, ttl: int, extra: Dictionary = {}) -> void:
+	if fx.size() > 80:
+		return
+	var f := {"kind": kind, "a": a, "t0": Time.get_ticks_msec(), "ttl": ttl}
+	f.merge(extra)
+	fx.append(f)
+
+
 func _on_event(event_name: String, data: Dictionary) -> void:
 	match event_name:
+		"tower_fired", "tower_slowed":
+			var tw: BuildingInstance = sim.buildings.get(data["instance_id"])
+			var tg: UnitState = sim.units.get(data["target_unit_id"])
+			if tw and tg:
+				_fx("arrow" if event_name == "tower_fired" else "frost", tw.center(), 160, {"b": tg.pos})
+		"building_damaged":
+			var bd: BuildingInstance = sim.buildings.get(data["instance_id"])
+			if bd:
+				_fx("hit", bd.center(), 220, {"scale": 1.8 if int(data["amount"]) > 150 else 1.0})
+		"unit_damaged":
+			var ud: UnitState = sim.units.get(data["unit_id"])
+			if ud and ud.kind == UnitState.KIND_ELF:
+				_fx("hit", ud.pos, 220)
+		"troll_skill":
+			var ts: UnitState = sim.units.get(data["unit_id"])
+			if ts:
+				match str(data["skill"]):
+					"roar": _fx("roar", ts.pos, 600, {"r": float(sim.cfg["troll"]["skills"]["roar"]["radius"])})
+					"rampage": _fx("ring", ts.pos, 500, {"col": Color("#ff5a1f")})
+					"smash": _fx("ring", ts.pos, 300, {"col": Color("#ffb347")})
+		"troll_level_up":
+			var tl: UnitState = sim.units.get(data["unit_id"])
+			if tl:
+				_fx("ring", tl.pos, 700, {"col": Color("#ffd24a")})
+				_fx("text", tl.pos, 1400, {"s": "升級 Lv%d" % data["level"], "col": Color("#ffd24a")})
+			if view_team() == "elves":
+				say("巨魔升到 Lv%d 了！" % data["level"])
+		"soul_skill":
+			var st: UnitState = sim.units.get(data["target_unit_id"])
+			if st:
+				_fx("ring", st.pos, 500, {"col": Color("#ffd400") if data["skill"] == "mark" else Color("#3fa53f")})
+		"gate_broken":
+			var gb: BuildingInstance = sim.buildings.get(data["instance_id"])
+			if gb:
+				_fx("text", gb.center(), 1600, {"s": "門破了！", "col": Color("#ff6a5a")})
+			if data["owner"] == view_pid:
+				say("⚠ 你的樹樁門被打破了！修滿前會一直開著")
+		"house_ejected":
+			if data["player_id"] == view_pid:
+				say("⚠ 樹屋被毀，你被彈出來了，快跑！")
 		"elf_died":
+			var du: UnitState = sim.units.get(data["unit_id"])
+			if du:
+				_fx("skull", du.pos, 2000)
 			if data["player_id"] == view_pid:
 				say("你被巨魔擊殺了！請選擇陣營")
 			else:
@@ -348,21 +444,31 @@ func _build_hud() -> void:
 	var hb := HBoxContainer.new()
 	hb.add_theme_constant_override("separation", 6)
 	top.add_child(hb)
-	ui["time"] = _label(hb, 22)
-	ui["time"].custom_minimum_size = Vector2(150, 0)
+	ui["time"] = _label(hb, 18)
+	ui["time"].custom_minimum_size = Vector2(128, 0)
+	ui["time"].autowrap_mode = TextServer.AUTOWRAP_OFF
+	ui["role"] = _label(hb, 16)
+	ui["role"].autowrap_mode = TextServer.AUTOWRAP_OFF
+	ui["role"].add_theme_color_override("font_color", Color("#ffd479"))
+	var sw := HBoxContainer.new()
+	hb.add_child(sw)
+	ui["switcher"] = sw
 	ui["pbtns"] = []
 	for pid in [1, 2, 3, MatchSim.TROLL_PLAYER_ID]:
-		var b := _btn("", _select_player.bind(pid), hb)
-		b.custom_minimum_size = Vector2(92, 44)
+		var b := _btn("", _select_player.bind(pid), sw)
+		b.custom_minimum_size = Vector2(64, 44)
 		b.toggle_mode = true
 		ui["pbtns"].append(b)
-	ui["res"] = _label(hb, 20)
+	ui["res"] = _label(hb, 17)
+	ui["res"].autowrap_mode = TextServer.AUTOWRAP_OFF
 	ui["res"].size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	ui["speed"] = _btn("x1", _cycle_speed, hb)
 	ui["pause"] = _btn("暫停", _toggle_pause, hb)
 	_btn("－", _zoom.bind(1.0 / 1.25), hb).custom_minimum_size = Vector2(44, 44)
 	_btn("＋", _zoom.bind(1.25), hb).custom_minimum_size = Vector2(44, 44)
 	_btn("找我", _center_camera, hb)
+	_btn("面板", func(): ui["side"].visible = not ui["side"].visible, hb)
+	_btn("選單", _show_menu, hb)
 
 	# 右側面板
 	var side := PanelContainer.new()
@@ -370,8 +476,9 @@ func _build_hud() -> void:
 	side.anchor_right = 1.0
 	side.anchor_top = 0.0
 	side.anchor_bottom = 1.0
-	side.offset_left = -360
+	side.offset_left = -330
 	side.offset_top = 60
+	ui["side"] = side
 	side.add_theme_stylebox_override("panel", _panel_style())
 	root.add_child(side)
 	var scroll := ScrollContainer.new()
@@ -394,7 +501,7 @@ func _build_hud() -> void:
 			continue
 		var b := _btn("", _enter_build.bind(id), grid)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		b.custom_minimum_size = Vector2(160, 52)
+		b.custom_minimum_size = Vector2(140, 52)
 		b.add_theme_font_size_override("font_size", 13)
 		ui["build_btns"][id] = b
 	var bm := HBoxContainer.new()
@@ -502,6 +609,7 @@ func _build_hud() -> void:
 
 	# 測試工具
 	var dbg := _section(col, "測試工具")
+	ui["dbg_sec"] = dbg
 	var drow := GridContainer.new()
 	drow.columns = 2
 	dbg.add_child(drow)
@@ -509,11 +617,11 @@ func _build_hud() -> void:
 	_btn("跳到 12:00", func(): sim.submit({"type": "debug_set_time", "sec": maxf(sim.now_sec(), 720.0)}), drow)
 	_btn("跳到 24:50", func(): sim.submit({"type": "debug_set_time", "sec": maxf(sim.now_sec(), 1490.0)}), drow)
 	_btn("巨魔立刻出場", _spawn_troll_now, drow)
-	_btn("重新開局", _new_match, drow)
+	_btn("重新開局", _new_match.bind(""), drow)
 
 	# 訊息
 	var msg := Label.new()
-	msg.add_theme_font_size_override("font_size", 20)
+	msg.add_theme_font_size_override("font_size", 17)
 	msg.add_theme_color_override("font_color", Color.WHITE)
 	msg.add_theme_color_override("font_outline_color", Color.BLACK)
 	msg.add_theme_constant_override("outline_size", 6)
@@ -538,7 +646,7 @@ func _build_hud() -> void:
 	var dl := _label(dv, 20)
 	dl.text = "你被擊殺了。選擇繼續參戰的陣營："
 	_btn("精靈方靈魂（修復之光／星光印記／藤蔓纏繞）", func(): _submit({"type": "death_choice", "choice": "soul"}), dv)
-	_btn("巨魔方僕從（較弱，可攻擊建築）", func(): _submit({"type": "death_choice", "choice": "minion"}), dv)
+	_btn("巨魔方僕從（較弱，可攻擊建築）", _choose_minion, dv)
 	ui["death_panel"] = dp
 
 	# 結果
@@ -553,9 +661,71 @@ func _build_hud() -> void:
 	rp.add_child(rv)
 	ui["result_lbl"] = _label(rv, 26)
 	ui["result_lbl"].horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_btn("再來一局", _new_match, rv)
+	_btn("再來一局", _show_menu, rv)
 	rp.visible = false
 	ui["result_panel"] = rp
+
+
+func _choose_minion() -> void:
+	var r := _submit({"type": "death_choice", "choice": "minion"})
+	if r.get("ok", false) and mode != "free":
+		sim.submit({"type": "set_troll_ai", "player_id": view_pid, "enabled": false})
+
+
+func _build_menu() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 5
+	add_child(layer)
+	var dim := ColorRect.new()
+	dim.color = Color(0.04, 0.07, 0.04, 0.82)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(dim)
+	ui["menu"] = dim
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.add_child(center)
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(600, 0)
+	var sb := _panel_style()
+	sb.set_content_margin_all(16)
+	sb.border_color = Color("#c9a24a")
+	sb.set_border_width_all(2)
+	panel.add_theme_stylebox_override("panel", sb)
+	center.add_child(panel)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 8)
+	panel.add_child(v)
+	var title := _label(v, 30)
+	title.text = "精靈與巨魔"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_color_override("font_color", Color("#ffd479"))
+	var sub := _label(v, 16)
+	sub.text = "試玩版 · 精靈撐過 25:00 或蓋好星界傳送門就贏"
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var b1 := _btn("扮演精靈（另外兩名精靈與巨魔由電腦控制）", _new_match.bind("elf"), v)
+	var b2 := _btn("扮演巨魔（三名精靈由電腦控制）", _new_match.bind("troll"), v)
+	var b3 := _btn("自由測試（可切換所有角色、含測試工具）", _new_match.bind("free"), v)
+	for b in [b1, b2, b3]:
+		b.custom_minimum_size = Vector2(0, 50)
+		b.add_theme_font_size_override("font_size", 18)
+	var how := _label(v, 14)
+	how.text = "點空地移動、拖曳移動鏡頭，右側面板建造（「面板」鈕可收合）。精靈：蓋好樹屋按「進屋關門」，屋內一樣能蓋基地裡的建築，門受損按「修復城牆」。巨魔：打建築會升級，殘血回巢補血。"
+	how.add_theme_font_size_override("font_size", 13)
+	how.add_theme_color_override("font_color", Color("#b9c4b0"))
+	# 直拿手機的提示
+	var rot := ColorRect.new()
+	rot.color = Color(0, 0, 0, 0.9)
+	rot.set_anchors_preset(Control.PRESET_FULL_RECT)
+	rot.visible = false
+	layer.add_child(rot)
+	var rl := Label.new()
+	rl.text = "請把手機橫放"
+	rl.add_theme_font_size_override("font_size", 40)
+	rl.set_anchors_preset(Control.PRESET_FULL_RECT)
+	rl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	rl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	rot.add_child(rl)
+	ui["rotate"] = rot
 
 
 # ---------- HUD 動作 ----------

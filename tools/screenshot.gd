@@ -20,7 +20,7 @@ func _process(_d: float) -> bool:
 	frames += 1
 	if frames == 3:
 		_setup()
-	if frames == 30:
+	if frames == 40:
 		var img := root.get_viewport().get_texture().get_image()
 		img.save_png(out)
 		print("saved ", out)
@@ -29,8 +29,25 @@ func _process(_d: float) -> bool:
 
 
 func _setup() -> void:
+	if scenario == "menu":
+		return
+	main._new_match("elf" if scenario.begins_with("demo") else "free")
 	var sim: MatchSim = main.sim
 	main.paused = true
+	if scenario.begins_with("demo"):
+		var helper := ElfBot.new(sim, [1])
+		var secs := int(scenario.get_slice("_", 1)) if scenario.contains("_") else 200
+		for i in secs * 10:
+			sim.step()
+			main.bot.tick()
+			helper.tick()
+		var tr: UnitState = sim.unit_of(MatchSim.TROLL_PLAYER_ID)
+		if scenario.ends_with("t") and tr:
+			main.camera.position = tr.pos * 32
+		else:
+			main.camera.position = Vector2(35, 7) * 32
+		main._refresh_hud()
+		return
 	sim.players[1].gold = 3000
 	sim.players[1].wood = 800
 	if scenario == "base":

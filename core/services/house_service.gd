@@ -149,6 +149,17 @@ func enter_range() -> int:
 	return int(sim.cfg["house"]["enter_range_cells"])
 
 
+## 在自己的樹屋內時，可以遠端建造／升級樹屋附近（自己基地內）的建築。
+## 這是參考《猛鬼宿舍》躺床蓋東西的做法；match_config 的 house.build_from_inside 可關掉。
+func can_build_remotely(pid: int, inst: BuildingInstance) -> bool:
+	if not bool(sim.cfg["house"].get("build_from_inside", false)) or not is_inside(pid):
+		return false
+	var h := house_of(pid)
+	if h == null or not h.is_functional() or inst == null:
+		return false
+	return GridMath.point_to_rect(h.center(), inst.origin, inst.size) <= float(sim.cfg["house"]["remote_build_radius"])
+
+
 ## 下令：走到自己的樹屋旁，到了就進去。
 func command_enter(pid: int) -> Dictionary:
 	if sim.is_over():

@@ -61,22 +61,23 @@ func test_gate_can_be_broken_and_stays_open_until_repaired() -> void:
 	put_inside(sim, 1, house)
 	sim.step()
 	var g := sim.house.gate_of(1)
-	eq(g.max_hp, 1000, "樹屋 Lv1 的門 1,000 HP")
+	var table: Array = sim.cfg["gate"]["hp_by_house_level"]
+	eq(g.max_hp, int(table[1]), "門的 HP 依樹屋等級（Lv1）")
 	var t := spawn_troll(sim, Vector2i(35, 10))
-	eq(sim.combat.damage_building(t, g, 5000), 1000, "只算有效傷害")
+	eq(sim.combat.damage_building(t, g, 999999), int(table[1]), "只算有效傷害")
 	eq(g.state, BuildingInstance.ST_GATE_BROKEN, "門被打破")
 	check(sim.buildings.has(g.instance_id), "破門不會消失")
 	check(sim.grid.is_walkable(GATE_CELL), "破門可以通行")
 	sim.run_seconds(2)
 	eq(g.state, BuildingInstance.ST_GATE_BROKEN, "精靈還在屋內，破門也保持開啟")
-	g.hp = 990
+	g.hp = g.max_hp - 10
 	check(sim.submit({"type": "house_repair", "player_id": 1})["ok"], "用修復鈕修門")
 	sim.run_seconds(1)
 	eq(g.state, BuildingInstance.ST_GATE_CLOSED, "修滿後恢復，主人在屋內就關上")
 	house.level = 4
 	house.max_hp = 1800
 	sim.house.refresh_gate_hp(1)
-	eq([g.hp, g.max_hp], [6000, 6000], "樹屋升到 Lv4，門變 6,000 HP（保留比例）")
+	eq([g.hp, g.max_hp], [int(table[4]), int(table[4])], "樹屋升到 Lv4，門的 HP 跟著變（保留比例）")
 
 
 func test_house_repair_button() -> void:
@@ -123,37 +124,38 @@ func test_elf_runs_faster() -> void:
 func test_troll_levels_and_minion_follow() -> void:
 	var sim := new_sim()
 	var t := troll(sim)
-	eq([t.level, t.max_hp, t.damage], [1, 2000, 40], "Lv1 數值")
-	t.hp = 1500
-	sim.troll.add_xp(600, "test")
-	eq([t.level, t.max_hp, t.hp, t.damage], [2, 2400, 1900, 50], "升 Lv2：血量上限 +400、當下血量一起 +400")
+	var lv: Array = sim.cfg["troll"]["levels"]
+	eq([t.level, t.max_hp, t.damage], [1, int(lv[0]["hp"]), int(lv[0]["damage"])], "Lv1 數值來自等級表")
+	t.hp = 700
+	sim.troll.add_xp(int(lv[0]["xp"]), "test")
+	eq([t.level, t.max_hp, t.hp, t.damage], [2, int(lv[1]["hp"]), 700 + int(lv[1]["hp"]) - int(lv[0]["hp"]), int(lv[1]["damage"])], "升 Lv2：血量上限提高，當下血量加上差額")
 	var wall := add_building(sim, 1, "wall", Vector2i(33, 5), 1)
 	spawn_troll(sim, Vector2i(10, 12))
 	sim.combat.damage_building(t, wall, 100)
-	eq(t.xp, 100, "對建築的有效傷害 1 HP = 1 經驗")
-	sim.troll.add_xp(900 + 1300 + 1800 - 100, "test")
+	eq(t.xp, int(100 * float(sim.cfg["troll"]["xp_per_effective_hp"])), "對建築的有效傷害換成經驗")
+	sim.troll.add_xp(int(lv[1]["xp"]) + int(lv[2]["xp"]) + int(lv[3]["xp"]) - t.xp, "test")
 	eq(t.level, 5, "累積經驗連升到 Lv5")
 	sim.submit({"type": "debug_kill", "player_id": 2})
 	sim.submit({"type": "death_choice", "player_id": 2, "choice": "minion"})
 	var m := sim.unit_of(2)
-	eq([m.level, m.max_hp, m.damage], [3, 2900 * 45 / 100, 62 * 45 / 100], "僕從 = 主巨魔等級 −2，數值 45%")
-	sim.troll.add_xp(2500, "test")
+	eq([m.level, m.max_hp, m.damage], [3, int(lv[2]["hp"]) * 45 / 100, int(lv[2]["damage"]) * 45 / 100], "僕從 = 主巨魔等級 −2，數值 45%")
+	sim.troll.add_xp(int(lv[4]["xp"]), "test")
 	eq(m.level, 4, "主巨魔升級，僕從跟著升")
 
 
 func test_troll_regen_nest_and_field() -> void:
 	var sim := new_sim()
 	var t := spawn_troll(sim, Vector2i(2, 15))
-	t.hp = 1000
+	t.hp = 300
 	sim.run_seconds(1)
-	eq(t.hp, 1160, "巢穴內每秒回 8%")
+	check(absi(t.hp - (300 + t.max_hp * 8 / 100)) <= 1, "巢穴內每秒回 8%%（實際 %d）" % t.hp)
 	teleport(t, Vector2i(20, 10))
-	t.hp = 1000
+	t.hp = 300
 	t.last_damaged_tick = sim.tick
 	sim.run_seconds(5)
-	eq(t.hp, 1000, "剛受傷時巢外不回血")
+	eq(t.hp, 300, "剛受傷時巢外不回血")
 	sim.run_seconds(3)
-	check(t.hp > 1000 and t.hp <= 1060, "脫戰 6 秒後每秒回 1%（約 20 HP/秒）")
+	check(t.hp > 300 and t.hp <= 300 + t.max_hp * 3 / 100 + 1, "脫戰 6 秒後每秒回 1%")
 
 
 func test_recall_channel_and_interrupt() -> void:
@@ -180,8 +182,8 @@ func test_smash_and_skill_unlocks() -> void:
 	sim.submit({"type": "attack", "player_id": MatchSim.TROLL_PLAYER_ID, "target_kind": "building", "target_id": wall.instance_id})
 	run_until(sim, func(): return sim.events.count("building_damaged") >= 2, 5)
 	var hits := sim.events.find_all("building_damaged")
-	eq(hits[0]["data"]["amount"], 120, "重擊：第一下 3 倍")
-	eq(hits[1]["data"]["amount"], 40, "第二下恢復正常")
+	eq(hits[0]["data"]["amount"], t.damage * 3, "重擊：第一下 3 倍")
+	eq(hits[1]["data"]["amount"], t.damage, "第二下恢復正常")
 	check(t.alive, "")
 
 
@@ -254,3 +256,31 @@ func test_troll_ai_ignores_hidden_elf() -> void:
 	sim.run_seconds(3)
 	check(sim.players[1].alive_original, "屋內精靈不會被殺")
 	check(t.ai_target.get("target_kind", "") != "unit" or t.ai_target.get("target_id") != sim.unit_of(1).id, "AI 不會鎖定屋內精靈")
+
+
+func test_build_from_inside_house() -> void:
+	var sim := new_sim()
+	var house := add_building(sim, 1, "elf_house", Vector2i(31, 2), 1)
+	put_inside(sim, 1, house)
+	sim.step()
+	var r := sim.submit({"type": "build", "player_id": 1, "def_id": "wall", "origin": [34, 7]})
+	check(r["ok"], "在屋內可以下令蓋基地裡的建築：%s" % str(r))
+	check(sim.house.is_inside(1), "不會被迫出屋")
+	check(run_until(sim, func(): return sim.buildings[r["instance_id"]].state == BuildingInstance.ST_ACTIVE, 10), "遠端施工會完工")
+	eq(sim.house.gate_of(1).state, BuildingInstance.ST_GATE_CLOSED, "門一直關著")
+	eq(sim.submit({"type": "build", "player_id": 1, "def_id": "wall", "origin": [30, 14]})["reason"], "builder_cannot_reach", "門關著時蓋不到基地外面")
+	sim.submit({"type": "exit_house", "player_id": 1})
+	sim.step()
+	check(sim.submit({"type": "build", "player_id": 1, "def_id": "wall", "origin": [30, 14]})["ok"], "出屋（門打開）後可以到外面蓋")
+
+
+func test_elf_bot_builds_and_hides() -> void:
+	var sim := new_sim()
+	var bot := ElfBot.new(sim, [1, 2, 3])
+	for i in 1200:
+		sim.step()
+		bot.tick()
+	for pid in [1, 2, 3]:
+		check(sim.house.house_level(pid) >= 2, "電腦精靈 %d 會蓋並升級樹屋" % pid)
+		check(sim.house.is_inside(pid), "電腦精靈 %d 會躲進屋裡" % pid)
+		check(sim.building_svc.count_owned(pid, "arrow_tower") >= 1, "電腦精靈 %d 會蓋箭塔" % pid)
